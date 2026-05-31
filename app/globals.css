@@ -60,7 +60,7 @@ img {
 }
 
 .dashboard-header {
-  padding: 1.2rem 0 1.6rem;
+  padding: 1.2rem 0 1.15rem;
   display: grid;
   gap: 1rem;
   color: white;
@@ -77,6 +77,7 @@ img {
 
 .header-topline {
   justify-content: space-between;
+  flex-wrap: wrap;
 }
 
 .site-logo-link {
@@ -93,14 +94,12 @@ img {
 
 .site-nav a,
 .footer-links a,
-.call-now,
 .dashboard-footer a {
   color: inherit;
   text-decoration: none;
 }
 
-.site-nav a,
-.call-now {
+.site-nav a {
   color: rgba(255, 255, 255, 0.9);
   font-family: Montserrat, Raleway, sans-serif;
   font-size: 0.76rem;
@@ -109,18 +108,12 @@ img {
   text-transform: uppercase;
 }
 
-.call-now {
-  color: var(--primary);
-  white-space: nowrap;
-}
-
 .header-controls {
-  justify-self: end;
+  margin-left: auto;
   justify-content: flex-end;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.65rem;
-  padding-top: 0.1rem;
 }
 
 .header-brand h1,
@@ -219,7 +212,7 @@ img {
 }
 
 .dashboard-main {
-  padding: 1.1rem 0 2.5rem;
+  padding: 1rem 0 2.5rem;
   display: grid;
   gap: 1.5rem;
 }

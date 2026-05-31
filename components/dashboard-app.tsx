@@ -257,34 +257,31 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
             <a href="https://craftsmanshipmarketing.com/blog/">Blog</a>
             <a href="https://funnels.craftsmanshipmarketing.com/">Contact</a>
           </nav>
-          <a className="call-now" href="tel:9256334431">
-            Call now: 925.633.4431
-          </a>
-        </div>
-        <div className="header-controls">
-          <label className="inline-select">
-            <span>Location</span>
-            <select
-              value={selectedLocation}
-              onChange={(event) => setSelectedLocation(event.target.value)}
+          <div className="header-controls">
+            <label className="inline-select">
+              <span>Location</span>
+              <select
+                value={selectedLocation}
+                onChange={(event) => setSelectedLocation(event.target.value)}
+              >
+                {payload.meta.locations.map((location) => (
+                  <option key={location} value={location}>
+                    {location}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={async () => {
+                await fetch("/api/auth", { method: "DELETE" });
+                window.location.href = "/login";
+              }}
             >
-              {payload.meta.locations.map((location) => (
-                <option key={location} value={location}>
-                  {location}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={async () => {
-              await fetch("/api/auth", { method: "DELETE" });
-              window.location.href = "/login";
-            }}
-          >
-            Log out
-          </button>
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
