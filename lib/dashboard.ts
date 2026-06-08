@@ -251,7 +251,10 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]) {
     );
 
     if (!response.ok) {
-      throw new Error(`Google Ads spend request failed with ${response.status}.`);
+      const errorText = await response.text();
+      throw new Error(
+        `Google Ads spend request failed with ${response.status}: ${summarizeGoogleAdsError(errorText)}`,
+      );
     }
 
     const chunks = (await response.json()) as Array<{
@@ -311,6 +314,39 @@ function getGoogleAdsConfig() {
     loginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/\D/g, ""),
     refreshToken,
   };
+}
+
+function summarizeGoogleAdsError(errorText: string) {
+  if (!errorText) {
+    return "No error details returned.";
+  }
+
+  try {
+    const parsed = JSON.parse(errorText) as {
+      error?: {
+        code?: number;
+        message?: string;
+        status?: string;
+        details?: Array<{
+          errors?: Array<{
+            message?: string;
+            errorCode?: Record<string, string>;
+          }>;
+        }>;
+      };
+    };
+    const googleAdsError = parsed.error?.details
+      ?.flatMap((detail) => detail.errors ?? [])
+      .find(Boolean);
+    const errorCode = googleAdsError?.errorCode
+      ? Object.values(googleAdsError.errorCode).join(", ")
+      : parsed.error?.status;
+    const message = googleAdsError?.message ?? parsed.error?.message;
+
+    return [errorCode, message].filter(Boolean).join(": ") || "Unknown Google Ads API error.";
+  } catch {
+    return errorText.slice(0, 240);
+  }
 }
 
 async function getGoogleAdsAccessToken(config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>) {
