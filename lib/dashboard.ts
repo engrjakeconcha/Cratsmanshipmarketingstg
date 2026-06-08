@@ -19,14 +19,10 @@ export type DashboardRow = {
 export type DashboardMetricKey =
   | "leads"
   | "booked"
-  | "canceled"
-  | "satAppts"
   | "spend"
   | "cpl"
   | "costPerAppt"
-  | "costPerSat"
-  | "leadToBooking"
-  | "cancellationRate";
+  | "leadToBooking";
 
 export type MetricSnapshot = Record<DashboardMetricKey, number>;
 
@@ -42,7 +38,7 @@ export type DashboardPayload = {
 
 const HEADER_ALIASES = {
   date: ["date", "report date", "day", "creation date", "created date"],
-  location: ["location", "market", "city", "region"],
+  location: ["company", "location", "market", "city", "region"],
   service: ["service", "services", "category", "campaign", "offering", "service type"],
   leads: ["leads", "lead", "lead count"],
   booked: ["booked", "appointments booked", "booked appts", "appt booked", "appts"],

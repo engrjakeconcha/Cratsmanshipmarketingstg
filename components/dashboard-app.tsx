@@ -21,12 +21,10 @@ type SortKey =
   | "service"
   | "leads"
   | "booked"
-  | "satAppts"
   | "spend"
   | "cpl"
   | "costPerAppt"
-  | "leadToBooking"
-  | "cancellationRate";
+  | "leadToBooking";
 
 const CARD_CONFIG: Array<{
   title: string;
@@ -38,18 +36,6 @@ const CARD_CONFIG: Array<{
   {
     title: "Booked Appts",
     key: "booked",
-    format: numberFormat,
-    group: "pipeline",
-  },
-  {
-    title: "Canceled Appts",
-    key: "canceled",
-    format: numberFormat,
-    group: "pipeline",
-  },
-  {
-    title: "Sat Appts",
-    key: "satAppts",
     format: numberFormat,
     group: "pipeline",
   },
@@ -72,20 +58,8 @@ const CARD_CONFIG: Array<{
     group: "spend",
   },
   {
-    title: "Cost per Sat Appt",
-    key: "costPerSat",
-    format: currencyFormat2,
-    group: "spend",
-  },
-  {
     title: "Lead → Booking %",
     key: "leadToBooking",
-    format: percentFormat,
-    group: "conversion",
-  },
-  {
-    title: "Cancellation %",
-    key: "cancellationRate",
     format: percentFormat,
     group: "conversion",
   },
@@ -95,12 +69,10 @@ const SORT_COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = 
   { key: "service", label: "Service" },
   { key: "leads", label: "Leads", numeric: true },
   { key: "booked", label: "Appts", numeric: true },
-  { key: "satAppts", label: "Sits", numeric: true },
   { key: "spend", label: "Spend", numeric: true },
   { key: "cpl", label: "CPL", numeric: true },
   { key: "costPerAppt", label: "CPA", numeric: true },
   { key: "leadToBooking", label: "Lead → Book %", numeric: true },
-  { key: "cancellationRate", label: "Cancel %", numeric: true },
 ];
 
 export function DashboardApp({ initialPayload }: DashboardAppProps) {
@@ -112,7 +84,7 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
   const [dateRange, setDateRange] = useState<DateRange>(() =>
     getDefaultDateRange(initialPayload.rows),
   );
-  const [sortKey, setSortKey] = useState<SortKey>("satAppts");
+  const [sortKey, setSortKey] = useState<SortKey>("booked");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -407,16 +379,12 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
                       <td>{row.service}</td>
                       <td className="numeric">{numberFormat(row.leads)}</td>
                       <td className="numeric">{numberFormat(row.booked)}</td>
-                      <td className="numeric">{numberFormat(row.satAppts)}</td>
                       <td className="numeric">{currencyFormat0(row.spend)}</td>
                       <td className="numeric">{currencyFormat2(row.cpl)}</td>
                       <td className="numeric">
                         {currencyFormat2(row.costPerAppt)}
                       </td>
                       <td className="numeric">{percentFormat(row.leadToBooking)}</td>
-                      <td className="numeric">
-                        {percentFormat(row.cancellationRate)}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -527,7 +495,7 @@ function MetricDelta({
   }
 
   const percent = ((current - previous) / previous) * 100;
-  const increasingIsGood = !["canceled", "spend", "cpl", "costPerAppt", "costPerSat", "cancellationRate"].includes(metricKey);
+  const increasingIsGood = !["spend", "cpl", "costPerAppt"].includes(metricKey);
   const isPositive = percent === 0 ? null : increasingIsGood ? percent > 0 : percent < 0;
 
   return (
@@ -551,26 +519,19 @@ function summarizeMetrics(rows: DashboardRow[]): MetricSnapshot {
     (accumulator, row) => {
       accumulator.leads += row.leads;
       accumulator.booked += row.booked;
-      accumulator.canceled += row.canceled;
       accumulator.spend += row.spend;
       return accumulator;
     },
-    { leads: 0, booked: 0, canceled: 0, spend: 0 },
+    { leads: 0, booked: 0, spend: 0 },
   );
-
-  const satAppts = totals.booked - totals.canceled;
 
   return {
     leads: totals.leads,
     booked: totals.booked,
-    canceled: totals.canceled,
-    satAppts,
     spend: totals.spend,
     cpl: totals.leads ? totals.spend / totals.leads : 0,
     costPerAppt: totals.booked ? totals.spend / totals.booked : 0,
-    costPerSat: satAppts ? totals.spend / satAppts : 0,
     leadToBooking: totals.leads ? totals.booked / totals.leads : 0,
-    cancellationRate: totals.booked ? totals.canceled / totals.booked : 0,
   };
 }
 
