@@ -243,6 +243,34 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
                 ))}
               </select>
             </label>
+            <div className="header-date-filters">
+              <label>
+                <span>From</span>
+                <input
+                  type="date"
+                  value={dateRange.from}
+                  onChange={(event) =>
+                    setDateRange((current) => ({
+                      ...current,
+                      from: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                <span>To</span>
+                <input
+                  type="date"
+                  value={dateRange.to}
+                  onChange={(event) =>
+                    setDateRange((current) => ({
+                      ...current,
+                      to: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
             <button
               type="button"
               className="ghost-button"
@@ -270,34 +298,6 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
                 {service === "all" ? "All Services" : service}
               </button>
             ))}
-          </div>
-          <div className="date-filters">
-            <label>
-              <span>From</span>
-              <input
-                type="date"
-                value={dateRange.from}
-                onChange={(event) =>
-                  setDateRange((current) => ({
-                    ...current,
-                    from: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              <span>To</span>
-              <input
-                type="date"
-                value={dateRange.to}
-                onChange={(event) =>
-                  setDateRange((current) => ({
-                    ...current,
-                    to: event.target.value,
-                  }))
-                }
-              />
-            </label>
           </div>
         </section>
 

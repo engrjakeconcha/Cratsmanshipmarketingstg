@@ -140,14 +140,16 @@ img {
 }
 
 .inline-select,
-.date-filters label {
+.date-filters label,
+.header-date-filters label {
   display: grid;
   gap: 0.35rem;
   font-size: 0.82rem;
   color: var(--muted-foreground);
 }
 
-.dashboard-header .inline-select {
+.dashboard-header .inline-select,
+.header-date-filters label {
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -159,11 +161,13 @@ img {
   text-transform: uppercase;
 }
 
-.dashboard-header .inline-select span {
+.dashboard-header .inline-select span,
+.header-date-filters span {
   padding-left: 0;
 }
 
-.dashboard-header .inline-select select {
+.dashboard-header .inline-select select,
+.header-date-filters input {
   min-width: 154px;
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.94);
@@ -173,6 +177,17 @@ img {
   font-weight: 700;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.header-date-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.header-date-filters input {
+  min-width: 148px;
 }
 
 .inline-select select,
@@ -220,7 +235,7 @@ img {
 .toolbar {
   display: flex;
   gap: 1rem;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: flex-start;
   flex-wrap: wrap;
 }
@@ -519,6 +534,20 @@ td.numeric {
   .dashboard-header .inline-select {
     display: grid;
     gap: 0.35rem;
+  }
+
+  .header-date-filters {
+    display: grid;
+    width: 100%;
+  }
+
+  .header-date-filters label {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .header-date-filters input {
+    width: 100%;
   }
 
   .ghost-button {
