@@ -81,9 +81,7 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
   const [payload, setPayload] = useState(initialPayload);
   const [selectedLocation, setSelectedLocation] = useState(ALL_LOCATIONS);
   const [selectedService, setSelectedService] = useState("all");
-  const [dateRange, setDateRange] = useState<DateRange>(() =>
-    getDefaultDateRange(initialPayload.rows),
-  );
+  const [dateRange, setDateRange] = useState<DateRange>(getCurrentMonthRange);
   const [sortKey, setSortKey] = useState<SortKey>("booked");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -152,7 +150,10 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
     [payload.rows, selectedLocation, selectedService, dateRange],
   );
 
-  const previousRange = useMemo(() => shiftDateRange(dateRange), [dateRange]);
+  const previousRange = useMemo(
+    () => getPreviousMonthRange(dateRange),
+    [dateRange],
+  );
 
   const previousRows = useMemo(
     () =>
@@ -552,32 +553,20 @@ function summarizeMetrics(rows: DashboardRow[]): MetricSnapshot {
   };
 }
 
-function getDefaultDateRange(rows: DashboardRow[]): DateRange {
-  if (rows.length === 0) {
-    const today = new Date().toISOString().slice(0, 10);
-    return { from: today, to: today };
-  }
-
-  const sortedDates = rows.map((row) => row.date).sort();
-  const latest = new Date(`${sortedDates.at(-1)}T00:00:00`);
-  const earliest = new Date(`${sortedDates[0]}T00:00:00`);
-  const defaultFrom = new Date(latest);
-  defaultFrom.setDate(defaultFrom.getDate() - 29);
+function getCurrentMonthRange(): DateRange {
+  const today = new Date();
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
   return {
-    from: formatDateInput(defaultFrom < earliest ? earliest : defaultFrom),
-    to: formatDateInput(latest),
+    from: formatDateInput(firstDayOfMonth),
+    to: formatDateInput(today),
   };
 }
 
-function shiftDateRange(range: DateRange): DateRange {
+function getPreviousMonthRange(range: DateRange): DateRange {
   const from = new Date(`${range.from}T00:00:00`);
-  const to = new Date(`${range.to}T00:00:00`);
-  const spanDays = Math.max(1, Math.round((to.getTime() - from.getTime()) / 86400000) + 1);
-  const previousTo = new Date(from);
-  previousTo.setDate(previousTo.getDate() - 1);
-  const previousFrom = new Date(previousTo);
-  previousFrom.setDate(previousFrom.getDate() - (spanDays - 1));
+  const previousFrom = new Date(from.getFullYear(), from.getMonth() - 1, 1);
+  const previousTo = new Date(from.getFullYear(), from.getMonth(), 0);
 
   return {
     from: formatDateInput(previousFrom),
@@ -598,7 +587,11 @@ function formatRangeLabel(range: DateRange): string {
 }
 
 function formatDateInput(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function currencyFormat0(value: number) {
