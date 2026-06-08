@@ -227,7 +227,7 @@ img {
 }
 
 .dashboard-main {
-  padding: 1rem 0 2.5rem;
+  padding: 1.25rem 0 2.5rem;
   display: grid;
   gap: 1.5rem;
 }
