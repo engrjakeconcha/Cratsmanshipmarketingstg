@@ -281,7 +281,7 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]) {
   return spendByDate;
 }
 
-function getGoogleAdsConfig() {
+export function getGoogleAdsConfig() {
   const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
   const customerIds = (process.env.GOOGLE_ADS_CUSTOMER_IDS ?? process.env.GOOGLE_ADS_CUSTOMER_ID)
     ?.split(",")
@@ -383,7 +383,9 @@ function summarizeParsedError(parsed: unknown) {
   }
 }
 
-async function getGoogleAdsAccessToken(config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>) {
+export async function getGoogleAdsAccessToken(
+  config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>,
+) {
   const body = new URLSearchParams({
     client_id: config.clientId,
     client_secret: config.clientSecret,
