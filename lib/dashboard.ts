@@ -322,30 +322,64 @@ function summarizeGoogleAdsError(errorText: string) {
   }
 
   try {
-    const parsed = JSON.parse(errorText) as {
-      error?: {
-        code?: number;
-        message?: string;
-        status?: string;
-        details?: Array<{
-          errors?: Array<{
-            message?: string;
-            errorCode?: Record<string, string>;
-          }>;
-        }>;
-      };
-    };
-    const googleAdsError = parsed.error?.details
-      ?.flatMap((detail) => detail.errors ?? [])
+    const parsed = JSON.parse(errorText) as
+      | Array<{
+          error?: GoogleApiError;
+        }>
+      | {
+          error?: GoogleApiError;
+        };
+    const error = Array.isArray(parsed)
+      ? parsed.find((entry) => entry.error)?.error
+      : parsed.error;
+    const googleAdsError: GoogleApiErrorDetailItem | undefined = error?.details
+      ?.flatMap((detail) => detail.errors ?? detail.fieldViolations ?? [])
       .find(Boolean);
     const errorCode = googleAdsError?.errorCode
       ? Object.values(googleAdsError.errorCode).join(", ")
-      : parsed.error?.status;
-    const message = googleAdsError?.message ?? parsed.error?.message;
+      : error?.status;
+    const message =
+      googleAdsError?.message ?? googleAdsError?.description ?? error?.message;
 
-    return [errorCode, message].filter(Boolean).join(": ") || "Unknown Google Ads API error.";
+    return (
+      [errorCode, message].filter(Boolean).join(": ") ||
+      summarizeParsedError(parsed)
+    );
   } catch {
     return errorText.slice(0, 240);
+  }
+}
+
+type GoogleApiError = {
+  code?: number;
+  message?: string;
+  status?: string;
+  details?: Array<{
+    errors?: Array<{
+      message?: string;
+      description?: string;
+      errorCode?: Record<string, string>;
+    }>;
+    fieldViolations?: Array<{
+      description?: string;
+      errorCode?: Record<string, string>;
+    }>;
+  }>;
+};
+
+type GoogleApiErrorDetailItem = {
+  message?: string;
+  description?: string;
+  errorCode?: Record<string, string>;
+};
+
+function summarizeParsedError(parsed: unknown) {
+  try {
+    return JSON.stringify(parsed)
+      .replace(/\s+/g, " ")
+      .slice(0, 240);
+  } catch {
+    return "Unknown Google Ads API error.";
   }
 }
 
