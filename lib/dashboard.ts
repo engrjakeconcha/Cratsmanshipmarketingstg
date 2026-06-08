@@ -143,7 +143,7 @@ function mapRow(
   return {
     date: date.toISOString().slice(0, 10),
     location: readCell(row, indices.location, MISSING_LOCATION_LABEL),
-    service: toTitleCase(rawService),
+    service: normalizeServiceType(rawService),
     leads: rawLeadNumber ? 1 : readNumber(row, indices.leads, 1),
     booked: readNumber(
       row,
@@ -217,6 +217,11 @@ function toTitleCase(value: string) {
     .filter(Boolean)
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
     .join(" ");
+}
+
+function normalizeServiceType(value: string) {
+  const [firstWord] = value.trim().split(/\s+/);
+  return firstWord ? toTitleCase(firstWord) : "Uncategorized";
 }
 
 function getGoogleAuth() {
