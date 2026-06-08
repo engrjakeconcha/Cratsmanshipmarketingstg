@@ -26,6 +26,8 @@ type SortKey =
   | "costPerAppt"
   | "leadToBooking";
 
+const ALL_LOCATIONS = "All Locations";
+
 const CARD_CONFIG: Array<{
   title: string;
   key: DashboardMetricKey;
@@ -77,9 +79,7 @@ const SORT_COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = 
 
 export function DashboardApp({ initialPayload }: DashboardAppProps) {
   const [payload, setPayload] = useState(initialPayload);
-  const [selectedLocation, setSelectedLocation] = useState(
-    initialPayload.meta.locations[0] ?? "All Locations",
-  );
+  const [selectedLocation, setSelectedLocation] = useState(ALL_LOCATIONS);
   const [selectedService, setSelectedService] = useState("all");
   const [dateRange, setDateRange] = useState<DateRange>(() =>
     getDefaultDateRange(initialPayload.rows),
@@ -108,15 +108,21 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
   }, []);
 
   useEffect(() => {
-    if (!payload.meta.locations.includes(selectedLocation)) {
-      setSelectedLocation(payload.meta.locations[0] ?? "All Locations");
+    if (
+      selectedLocation !== ALL_LOCATIONS &&
+      !payload.meta.locations.includes(selectedLocation)
+    ) {
+      setSelectedLocation(ALL_LOCATIONS);
     }
   }, [payload.meta.locations, selectedLocation]);
 
   const services = useMemo(() => {
     const options = new Set<string>();
     payload.rows.forEach((row) => {
-      if (row.location === selectedLocation) {
+      if (
+        selectedLocation === ALL_LOCATIONS ||
+        row.location === selectedLocation
+      ) {
         options.add(row.service);
       }
     });
@@ -132,7 +138,10 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
   const filteredRows = useMemo(
     () =>
       payload.rows.filter((row) => {
-        if (row.location !== selectedLocation) {
+        if (
+          selectedLocation !== ALL_LOCATIONS &&
+          row.location !== selectedLocation
+        ) {
           return false;
         }
         if (selectedService !== "all" && row.service !== selectedService) {
@@ -148,7 +157,10 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
   const previousRows = useMemo(
     () =>
       payload.rows.filter((row) => {
-        if (row.location !== selectedLocation) {
+        if (
+          selectedLocation !== ALL_LOCATIONS &&
+          row.location !== selectedLocation
+        ) {
           return false;
         }
         if (selectedService !== "all" && row.service !== selectedService) {
@@ -236,6 +248,7 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
                 value={selectedLocation}
                 onChange={(event) => setSelectedLocation(event.target.value)}
               >
+                <option value={ALL_LOCATIONS}>{ALL_LOCATIONS}</option>
                 {payload.meta.locations.map((location) => (
                   <option key={location} value={location}>
                     {location}
