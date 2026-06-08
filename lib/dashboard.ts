@@ -5,6 +5,7 @@ const DEFAULT_GOOGLE_SHEETS_SPREADSHEET_ID =
   "1NcKP_DrtxK9XArJhcZVvhKVBh2tw5vu5PBnrBHePlg4";
 const DEFAULT_GOOGLE_SERVICE_ACCOUNT_EMAIL =
   "craftsmanship-marketing@craftsmanship-marketing-stg.iam.gserviceaccount.com";
+const MISSING_LOCATION_LABEL = "Location Not Set";
 
 export type DashboardRow = {
   date: string;
@@ -141,7 +142,7 @@ function mapRow(
 
   return {
     date: date.toISOString().slice(0, 10),
-    location: readCell(row, indices.location, "All Markets"),
+    location: readCell(row, indices.location, MISSING_LOCATION_LABEL),
     service: toTitleCase(rawService),
     leads: rawLeadNumber ? 1 : readNumber(row, indices.leads, 1),
     booked: readNumber(
