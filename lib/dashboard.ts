@@ -41,6 +41,7 @@ const HEADER_ALIASES = {
   location: ["company", "location", "market", "city", "region"],
   service: ["service", "services", "category", "campaign", "offering", "service type"],
   leads: ["leads", "lead", "lead count"],
+  leadNumber: ["number", "phone", "phone number", "telephone"],
   booked: ["booked", "appointments booked", "booked appts", "appt booked", "appts"],
   canceled: ["canceled", "cancelled", "cancel", "appointments canceled", "appointments cancelled"],
   spend: ["spend", "ad spend", "amount spent", "total spend", "cost"],
@@ -100,6 +101,7 @@ async function loadGoogleSheetRows() {
     location: findHeaderIndex(headers, HEADER_ALIASES.location),
     service: findHeaderIndex(headers, HEADER_ALIASES.service),
     leads: findHeaderIndex(headers, HEADER_ALIASES.leads),
+    leadNumber: findHeaderIndex(headers, HEADER_ALIASES.leadNumber),
     booked: findHeaderIndex(headers, HEADER_ALIASES.booked),
     canceled: findHeaderIndex(headers, HEADER_ALIASES.canceled),
     spend: findHeaderIndex(headers, HEADER_ALIASES.spend),
@@ -125,8 +127,10 @@ function mapRow(
 ): DashboardRow | null {
   const rawDate = row[indices.date]?.trim();
   const rawService = row[indices.service]?.trim();
+  const rawLeadNumber =
+    indices.leadNumber === -1 ? null : row[indices.leadNumber]?.trim();
 
-  if (!rawDate || !rawService) {
+  if (!rawDate || !rawService || rawLeadNumber === "") {
     return null;
   }
 
@@ -139,7 +143,7 @@ function mapRow(
     date: date.toISOString().slice(0, 10),
     location: readCell(row, indices.location, "All Markets"),
     service: toTitleCase(rawService),
-    leads: readNumber(row, indices.leads, 1),
+    leads: rawLeadNumber ? 1 : readNumber(row, indices.leads, 1),
     booked: readNumber(
       row,
       indices.booked,
