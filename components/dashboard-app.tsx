@@ -216,12 +216,10 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
     if (payload.meta.source === "sample-fallback") {
       return "Showing sample fallback data until Google Sheets credentials are connected.";
     }
-    if (payload.meta.warning) {
-      return payload.meta.warning;
-    }
     return `Last synced ${new Date(payload.meta.fetchedAt).toLocaleString()}`;
   }, [payload.meta]);
 
+  const errorMessage = payload.meta.warning;
   const rangeLabel = formatRangeLabel(dateRange);
 
   return (
@@ -407,6 +405,12 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
         ) : null}
       </main>
       <footer className="dashboard-footer">
+        {errorMessage ? (
+          <div className="footer-alert" role="status" aria-live="polite">
+            <p className="footer-alert-label">Dashboard notice</p>
+            <p>{errorMessage}</p>
+          </div>
+        ) : null}
         <div className="footer-inner">
           <div>
             <img
