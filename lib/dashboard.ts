@@ -52,19 +52,21 @@ const HEADER_ALIASES = {
 export async function loadDashboardPayload(): Promise<DashboardPayload> {
   try {
     const rows = await loadGoogleSheetRows();
+    const { rows: rowsWithSpend, warning } = await applyGoogleAdsSpend(rows);
 
-    if (rows.length === 0) {
+    if (rowsWithSpend.length === 0) {
       return createSamplePayload(
         "Connected to Google Sheets, but no usable rows were found. Showing sample fallback data.",
       );
     }
 
     return {
-      rows,
+      rows: rowsWithSpend,
       meta: {
         fetchedAt: new Date().toISOString(),
-        locations: Array.from(new Set(rows.map((row) => row.location))).sort(),
+        locations: Array.from(new Set(rowsWithSpend.map((row) => row.location))).sort(),
         source: "google-sheets",
+        warning,
       },
     };
   } catch (error) {
@@ -166,6 +168,177 @@ function createSamplePayload(warning: string): DashboardPayload {
       warning,
     },
   };
+}
+
+async function applyGoogleAdsSpend(rows: DashboardRow[]) {
+  try {
+    const dailySpend = await loadGoogleAdsDailySpend(rows);
+    if (!dailySpend) {
+      return { rows };
+    }
+
+    const leadsByDate = rows.reduce<Record<string, number>>((accumulator, row) => {
+      accumulator[row.date] = (accumulator[row.date] ?? 0) + row.leads;
+      return accumulator;
+    }, {});
+
+    return {
+      rows: rows.map((row) => {
+        const dateSpend = dailySpend.get(row.date);
+        const dateLeads = leadsByDate[row.date] ?? 0;
+
+        if (!dateSpend || dateLeads === 0) {
+          return { ...row, spend: 0 };
+        }
+
+        return {
+          ...row,
+          spend: (dateSpend * row.leads) / dateLeads,
+        };
+      }),
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to load Google Ads spend.";
+
+    return {
+      rows,
+      warning: `${message} Showing sheet spend values.`,
+    };
+  }
+}
+
+async function loadGoogleAdsDailySpend(rows: DashboardRow[]) {
+  const config = getGoogleAdsConfig();
+  if (!config || rows.length === 0) {
+    return null;
+  }
+
+  const dates = rows.map((row) => row.date).sort();
+  const dateFrom = dates[0];
+  const dateTo = dates.at(-1);
+
+  if (!dateFrom || !dateTo) {
+    return null;
+  }
+
+  const accessToken = await getGoogleAdsAccessToken(config);
+  const spendByDate = new Map<string, number>();
+
+  for (const customerId of config.customerIds) {
+    const response = await fetch(
+      `https://googleads.googleapis.com/${config.apiVersion}/customers/${customerId}/googleAds:searchStream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "developer-token": config.developerToken,
+          ...(config.loginCustomerId
+            ? { "login-customer-id": config.loginCustomerId }
+            : {}),
+        },
+        body: JSON.stringify({
+          query: `
+            SELECT
+              segments.date,
+              metrics.cost_micros
+            FROM campaign
+            WHERE segments.date BETWEEN '${dateFrom}' AND '${dateTo}'
+          `,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Google Ads spend request failed with ${response.status}.`);
+    }
+
+    const chunks = (await response.json()) as Array<{
+      results?: Array<{
+        segments?: { date?: string };
+        metrics?: { costMicros?: string };
+      }>;
+    }>;
+
+    chunks.forEach((chunk) => {
+      chunk.results?.forEach((result) => {
+        const date = result.segments?.date;
+        const costMicros = Number(result.metrics?.costMicros ?? 0);
+
+        if (!date || !Number.isFinite(costMicros)) {
+          return;
+        }
+
+        spendByDate.set(date, (spendByDate.get(date) ?? 0) + costMicros / 1_000_000);
+      });
+    });
+  }
+
+  return spendByDate;
+}
+
+function getGoogleAdsConfig() {
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  const customerIds = (process.env.GOOGLE_ADS_CUSTOMER_IDS ?? process.env.GOOGLE_ADS_CUSTOMER_ID)
+    ?.split(",")
+    .map((customerId) => customerId.replace(/\D/g, ""))
+    .filter(Boolean);
+  const clientId =
+    process.env.GOOGLE_ADS_CLIENT_ID ?? process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret =
+    process.env.GOOGLE_ADS_CLIENT_SECRET ?? process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const refreshToken =
+    process.env.GOOGLE_ADS_REFRESH_TOKEN ?? process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+
+  if (
+    !developerToken ||
+    !customerIds ||
+    customerIds.length === 0 ||
+    !clientId ||
+    !clientSecret ||
+    !refreshToken
+  ) {
+    return null;
+  }
+
+  return {
+    apiVersion: process.env.GOOGLE_ADS_API_VERSION ?? "v22",
+    clientId,
+    clientSecret,
+    customerIds,
+    developerToken,
+    loginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/\D/g, ""),
+    refreshToken,
+  };
+}
+
+async function getGoogleAdsAccessToken(config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>) {
+  const body = new URLSearchParams({
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    grant_type: "refresh_token",
+    refresh_token: config.refreshToken,
+  });
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Google Ads OAuth token request failed with ${response.status}.`);
+  }
+
+  const token = (await response.json()) as { access_token?: string };
+  if (!token.access_token) {
+    throw new Error("Google Ads OAuth token response did not include an access token.");
+  }
+
+  return token.access_token;
 }
 
 function normalizeHeader(value: string) {

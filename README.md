@@ -20,6 +20,13 @@ GOOGLE_SHEETS_RANGE=Sheet1!A:Z
 GOOGLE_SERVICE_ACCOUNT_JSON_BASE64=base64_encoded_service_account_json
 GOOGLE_SERVICE_ACCOUNT_EMAIL=service-account@your-project.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GOOGLE_ADS_DEVELOPER_TOKEN=your_google_ads_developer_token
+GOOGLE_ADS_CUSTOMER_ID=1234567890
+GOOGLE_ADS_LOGIN_CUSTOMER_ID=optional_manager_account_id
+GOOGLE_ADS_CLIENT_ID=optional_ads_oauth_client_id
+GOOGLE_ADS_CLIENT_SECRET=optional_ads_oauth_client_secret
+GOOGLE_ADS_REFRESH_TOKEN=optional_ads_refresh_token
+GOOGLE_ADS_API_VERSION=v22
 NEXT_PUBLIC_REFRESH_MS=300000
 ```
 
@@ -43,3 +50,7 @@ npm run dev
 7. Copy the spreadsheet ID from the sheet URL into `GOOGLE_SHEETS_SPREADSHEET_ID`.
 
 If the credentials are missing or the sheet cannot be read, the dashboard automatically falls back to sample data so the UI still renders.
+
+## Google Ads spend
+
+When Google Ads env vars are configured, `Amount Spent` is loaded from the Google Ads API by `segments.date` using `metrics.cost_micros`. Daily spend is divided by 1,000,000 and allocated across the leads for that same date, so dashboard date-range totals match Google Ads daily spend totals. If Google Ads env vars are missing, the dashboard falls back to the sheet spend column.
