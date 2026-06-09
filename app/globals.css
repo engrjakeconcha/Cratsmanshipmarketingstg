@@ -238,6 +238,7 @@ img {
   justify-content: flex-start;
   align-items: flex-start;
   flex-wrap: wrap;
+  margin-top: 0.8rem;
 }
 
 .service-pills {
