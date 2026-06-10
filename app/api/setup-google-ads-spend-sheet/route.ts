@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
+import type { JWT, OAuth2Client } from "google-auth-library";
 import { getAuthCookieName, isAuthenticated } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ const HEADERS = [
   "Notes",
   "Last Updated",
 ];
+type SheetsAuth = JWT | OAuth2Client;
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -27,15 +29,70 @@ export async function POST() {
 
   const spreadsheetId =
     process.env.GOOGLE_SHEETS_SPREADSHEET_ID ?? DEFAULT_SPREADSHEET_ID;
-  const auth = getGoogleOAuthClient() ?? getGoogleServiceAccountClient();
+  const authOptions: Array<{ label: string; auth: SheetsAuth }> = [];
+  const serviceAccountClient = getGoogleServiceAccountClient();
+  const oauthClient = getGoogleOAuthClient();
 
-  if (!auth) {
+  if (serviceAccountClient) {
+    authOptions.push({ label: "service_account", auth: serviceAccountClient });
+  }
+
+  if (oauthClient) {
+    authOptions.push({ label: "oauth", auth: oauthClient });
+  }
+
+  if (authOptions.length === 0) {
     return NextResponse.json(
       { ok: false, message: "Google Sheets credentials are not configured." },
       { status: 400 },
     );
   }
 
+  const errors: Array<{ credential: string; message: string; status?: number }> = [];
+
+  for (const option of authOptions) {
+    try {
+      const result = await setupSpendSheet({
+        auth: option.auth,
+        credentialLabel: option.label,
+        spreadsheetId,
+      });
+
+      return NextResponse.json(result);
+    } catch (error) {
+      errors.push({
+        credential: option.label,
+        message: error instanceof Error ? error.message : "Unknown setup error.",
+        status:
+          typeof error === "object" &&
+          error !== null &&
+          "status" in error &&
+          typeof error.status === "number"
+            ? error.status
+            : undefined,
+      });
+    }
+  }
+
+  return NextResponse.json(
+    {
+      ok: false,
+      message: "No configured Google Sheets credential could write to the sheet.",
+      errors,
+    },
+    { status: 403 },
+  );
+}
+
+async function setupSpendSheet({
+  auth,
+  credentialLabel,
+  spreadsheetId,
+}: {
+  auth: SheetsAuth;
+  credentialLabel: string;
+  spreadsheetId: string;
+}) {
   const sheets = google.sheets({ version: "v4", auth });
   const metadata = await sheets.spreadsheets.get({
     spreadsheetId,
@@ -172,13 +229,14 @@ export async function POST() {
     },
   });
 
-  return NextResponse.json({
+  return {
     ok: true,
+    credential: credentialLabel,
     spreadsheetId,
     sheetTitle: SHEET_TITLE,
     created: !existingSheet,
     headers: HEADERS,
-  });
+  };
 }
 
 function getGoogleOAuthClient() {
