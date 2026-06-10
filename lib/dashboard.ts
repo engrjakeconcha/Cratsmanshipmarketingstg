@@ -6,6 +6,7 @@ const DEFAULT_GOOGLE_SHEETS_SPREADSHEET_ID =
 const DEFAULT_GOOGLE_SERVICE_ACCOUNT_EMAIL =
   "craftsmanship-marketing@craftsmanship-marketing-stg.iam.gserviceaccount.com";
 const MISSING_LOCATION_LABEL = "Location Not Set";
+const ALLOWED_SERVICES = ["Bathroom", "Kitchen", "Home"] as const;
 
 export type DashboardRow = {
   date: string;
@@ -132,8 +133,9 @@ function mapRow(
   const rawService = row[indices.service]?.trim();
   const rawLeadNumber =
     indices.leadNumber === -1 ? null : row[indices.leadNumber]?.trim();
+  const service = rawService ? normalizeServiceType(rawService) : null;
 
-  if (!rawDate || !rawService || rawLeadNumber === "") {
+  if (!rawDate || !service || rawLeadNumber === "") {
     return null;
   }
 
@@ -144,8 +146,10 @@ function mapRow(
 
   return {
     date: date.toISOString().slice(0, 10),
-    location: readCell(row, indices.location, MISSING_LOCATION_LABEL),
-    service: normalizeServiceType(rawService),
+    location: normalizeLocation(
+      readCell(row, indices.location, MISSING_LOCATION_LABEL),
+    ),
+    service,
     leads: rawLeadNumber ? 1 : readNumber(row, indices.leads, 1),
     booked: readNumber(
       row,
@@ -445,6 +449,10 @@ function readNumber(row: string[], index: number, fallback: number) {
     return fallback;
   }
 
+  if (!row[index]?.trim()) {
+    return fallback;
+  }
+
   return toNumber(row[index]);
 }
 
@@ -465,8 +473,26 @@ function toTitleCase(value: string) {
 }
 
 function normalizeServiceType(value: string) {
-  const [firstWord] = value.trim().split(/\s+/);
-  return firstWord ? toTitleCase(firstWord) : "Uncategorized";
+  const normalized = value.toLowerCase();
+  const service = ALLOWED_SERVICES.find((allowedService) =>
+    normalized.startsWith(allowedService.toLowerCase()),
+  );
+
+  return service ?? null;
+}
+
+function normalizeLocation(value: string) {
+  const normalized = value.toLowerCase();
+
+  if (normalized.includes("texas") || normalized.includes("dallas")) {
+    return "Texas";
+  }
+
+  if (normalized.includes("san diego")) {
+    return "San Diego";
+  }
+
+  return "San Diego";
 }
 
 function getGoogleAuth() {

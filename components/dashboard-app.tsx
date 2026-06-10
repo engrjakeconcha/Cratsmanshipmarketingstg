@@ -27,6 +27,7 @@ type SortKey =
   | "leadToBooking";
 
 const ALL_LOCATIONS = "All Locations";
+const SERVICE_OPTIONS = ["all", "Bathroom", "Kitchen", "Home"];
 
 const CARD_CONFIG: Array<{
   title: string;
@@ -114,24 +115,11 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
     }
   }, [payload.meta.locations, selectedLocation]);
 
-  const services = useMemo(() => {
-    const options = new Set<string>();
-    payload.rows.forEach((row) => {
-      if (
-        selectedLocation === ALL_LOCATIONS ||
-        row.location === selectedLocation
-      ) {
-        options.add(row.service);
-      }
-    });
-    return ["all", ...Array.from(options).sort((a, b) => a.localeCompare(b))];
-  }, [payload.rows, selectedLocation]);
-
   useEffect(() => {
-    if (!services.includes(selectedService)) {
+    if (!SERVICE_OPTIONS.includes(selectedService)) {
       setSelectedService("all");
     }
-  }, [services, selectedService]);
+  }, [selectedService]);
 
   const filteredRows = useMemo(
     () =>
@@ -300,14 +288,14 @@ export function DashboardApp({ initialPayload }: DashboardAppProps) {
       <main className="dashboard-main">
         <section className="toolbar">
           <div className="service-pills">
-            {services.map((service) => (
+            {SERVICE_OPTIONS.map((service) => (
               <button
                 key={service}
                 type="button"
                 onClick={() => setSelectedService(service)}
                 className={service === selectedService ? "pill active" : "pill"}
               >
-                {service === "all" ? "All Services" : service}
+                {service === "all" ? "All" : service}
               </button>
             ))}
           </div>
