@@ -354,6 +354,7 @@ function readAdsSpendRows(
     date: findHeaderIndex(headers, ["date"]),
     service: findHeaderIndex(headers, ["service type", "service"]),
     cost: findHeaderIndex(headers, [
+      "cost (usd)",
       "cost usd",
       "cost",
       "amount spent",
