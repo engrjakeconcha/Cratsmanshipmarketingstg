@@ -203,7 +203,8 @@ async function applyGoogleAdsSpend(rows: DashboardRow[]) {
     );
 
     return {
-      rows: rows.map((row) => {
+      rows: [
+        ...rows.map((row) => {
         const key = getSpendKey(row.date, row.location, row.service);
         const segmentSpend = spendBySegment.get(key);
         const segmentLeads = leadsBySegment[key] ?? 0;
@@ -216,7 +217,23 @@ async function applyGoogleAdsSpend(rows: DashboardRow[]) {
           ...row,
           spend: (segmentSpend * row.leads) / segmentLeads,
         };
-      }),
+        }),
+        ...Array.from(spendBySegment.entries())
+          .filter(([key]) => !leadsBySegment[key])
+          .map(([key, spend]) => {
+            const { date, location, service } = parseSpendKey(key);
+
+            return {
+              date,
+              location,
+              service,
+              leads: 0,
+              booked: 0,
+              canceled: 0,
+              spend,
+            };
+          }),
+      ].sort((left, right) => left.date.localeCompare(right.date)),
     };
   } catch (error) {
     const message =
@@ -350,7 +367,7 @@ function readAdsSpendRows(
   }
 
   const headers = values[0].map((value) => normalizeHeader(value));
-  const indices = {
+  let indices = {
     date: findHeaderIndex(headers, ["date"]),
     service: findHeaderIndex(headers, ["service type", "service"]),
     cost: findHeaderIndex(headers, [
@@ -362,14 +379,25 @@ function readAdsSpendRows(
       "ad spend",
     ]),
   };
+  let firstDataRowIndex = 1;
 
   if (indices.date === -1 || indices.service === -1 || indices.cost === -1) {
-    return [];
+    const firstCellDate = normalizeDateInput(values[0][0]);
+    if (!firstCellDate) {
+      return [];
+    }
+
+    indices = {
+      date: 0,
+      service: 1,
+      cost: 5,
+    };
+    firstDataRowIndex = 0;
   }
 
   const rows: AdsSpendRow[] = [];
 
-  values.slice(1).forEach((row) => {
+  values.slice(firstDataRowIndex).forEach((row) => {
     const date = normalizeDateInput(row[indices.date]);
     const service = normalizeServiceType(row[indices.service] ?? "");
     const spend = readNumber(row, indices.cost, 0);
@@ -606,6 +634,16 @@ function normalizeHeader(value: string) {
 
 function getSpendKey(date: string, location: string, service: string) {
   return [date, normalizeLocation(location), service].join("|");
+}
+
+function parseSpendKey(key: string) {
+  const [date, location, service] = key.split("|");
+
+  return {
+    date: date ?? "",
+    location: location ?? MISSING_LOCATION_LABEL,
+    service: service ?? "Home",
+  };
 }
 
 function normalizeDateInput(value?: string) {
