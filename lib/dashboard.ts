@@ -7,6 +7,8 @@ const DEFAULT_GOOGLE_SERVICE_ACCOUNT_EMAIL =
   "craftsmanship-marketing@craftsmanship-marketing-stg.iam.gserviceaccount.com";
 const MISSING_LOCATION_LABEL = "Location Not Set";
 const ALLOWED_SERVICES = ["Bathroom", "Kitchen", "Home"] as const;
+const ADS_SPEND_REPORT_TITLE = "Ads Spent Report";
+const ADS_SPEND_LOCATIONS = ["San Diego", "Texas"] as const;
 
 export type DashboardRow = {
   date: string;
@@ -15,6 +17,14 @@ export type DashboardRow = {
   leads: number;
   booked: number;
   canceled: number;
+  spend: number;
+};
+
+type SpendMap = Map<string, number>;
+type AdsSpendRow = {
+  date: string;
+  location: string;
+  service: string;
   spend: number;
 };
 
@@ -176,28 +186,35 @@ function createSamplePayload(warning: string): DashboardPayload {
 
 async function applyGoogleAdsSpend(rows: DashboardRow[]) {
   try {
-    const dailySpend = await loadGoogleAdsDailySpend(rows);
-    if (!dailySpend) {
+    const spendBySegment =
+      (await loadExportedGoogleAdsSpend(rows)) ??
+      (await loadGoogleAdsDailySpend(rows));
+    if (!spendBySegment) {
       return { rows };
     }
 
-    const leadsByDate = rows.reduce<Record<string, number>>((accumulator, row) => {
-      accumulator[row.date] = (accumulator[row.date] ?? 0) + row.leads;
-      return accumulator;
-    }, {});
+    const leadsBySegment = rows.reduce<Record<string, number>>(
+      (accumulator, row) => {
+        const key = getSpendKey(row.date, row.location, row.service);
+        accumulator[key] = (accumulator[key] ?? 0) + row.leads;
+        return accumulator;
+      },
+      {},
+    );
 
     return {
       rows: rows.map((row) => {
-        const dateSpend = dailySpend.get(row.date);
-        const dateLeads = leadsByDate[row.date] ?? 0;
+        const key = getSpendKey(row.date, row.location, row.service);
+        const segmentSpend = spendBySegment.get(key);
+        const segmentLeads = leadsBySegment[key] ?? 0;
 
-        if (!dateSpend || dateLeads === 0) {
+        if (!segmentSpend || segmentLeads === 0) {
           return { ...row, spend: 0 };
         }
 
         return {
           ...row,
-          spend: (dateSpend * row.leads) / dateLeads,
+          spend: (segmentSpend * row.leads) / segmentLeads,
         };
       }),
     };
@@ -212,7 +229,161 @@ async function applyGoogleAdsSpend(rows: DashboardRow[]) {
   }
 }
 
-async function loadGoogleAdsDailySpend(rows: DashboardRow[]) {
+async function loadExportedGoogleAdsSpend(rows: DashboardRow[]): Promise<SpendMap | null> {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const spreadsheetId =
+    process.env.GOOGLE_SHEETS_SPREADSHEET_ID ??
+    DEFAULT_GOOGLE_SHEETS_SPREADSHEET_ID;
+  const auth = getGoogleAuth();
+  if (!spreadsheetId || !auth) {
+    return null;
+  }
+
+  const rowDates = rows.map((row) => row.date).sort();
+  const dateFrom = rowDates[0];
+  const dateTo = rowDates.at(-1);
+  if (!dateFrom || !dateTo) {
+    return null;
+  }
+
+  const sheets = google.sheets({ version: "v4", auth });
+  const metadata = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties(title,hidden)",
+  });
+  const visibleSheetTitles =
+    metadata.data.sheets
+      ?.filter((sheet) => !sheet.properties?.hidden)
+      .map((sheet) => sheet.properties?.title)
+      .filter((title): title is string => Boolean(title)) ?? [];
+  const locationSheets = resolveAdsSpendSheets(visibleSheetTitles);
+
+  if (locationSheets.length === 0) {
+    return null;
+  }
+
+  const spendBySegment: SpendMap = new Map();
+
+  for (const locationSheet of locationSheets) {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${quoteSheetName(locationSheet.sheetName)}!A:H`,
+    });
+    const values = response.data.values ?? [];
+    const rowsForSheet = readAdsSpendRows(
+      values,
+      locationSheet.location,
+      dateFrom,
+      dateTo,
+    );
+
+    rowsForSheet.forEach((row) => {
+      const key = getSpendKey(row.date, row.location, row.service);
+      spendBySegment.set(key, (spendBySegment.get(key) ?? 0) + row.spend);
+    });
+  }
+
+  return spendBySegment.size > 0 ? spendBySegment : null;
+}
+
+function resolveAdsSpendSheets(sheetTitles: string[]) {
+  const overrides = [
+    {
+      location: "San Diego",
+      sheetName: process.env.GOOGLE_ADS_SPEND_SHEET_SAN_DIEGO,
+    },
+    {
+      location: "Texas",
+      sheetName: process.env.GOOGLE_ADS_SPEND_SHEET_TEXAS,
+    },
+  ]
+    .filter((entry): entry is { location: string; sheetName: string } =>
+      Boolean(entry.sheetName),
+    )
+    .filter((entry) => sheetTitles.includes(entry.sheetName));
+
+  if (overrides.length > 0) {
+    return overrides;
+  }
+
+  return ADS_SPEND_LOCATIONS.flatMap((location) => {
+    const explicitSheet = findAdsSpendSheetForLocation(sheetTitles, location);
+    if (explicitSheet) {
+      return [{ location, sheetName: explicitSheet }];
+    }
+
+    if (
+      location === "San Diego" &&
+      sheetTitles.includes(ADS_SPEND_REPORT_TITLE)
+    ) {
+      return [{ location, sheetName: ADS_SPEND_REPORT_TITLE }];
+    }
+
+    return [];
+  });
+}
+
+function findAdsSpendSheetForLocation(sheetTitles: string[], location: string) {
+  const locationNeedles =
+    location === "Texas" ? ["texas", "tx"] : ["san diego", "sandiego", "sd"];
+
+  return sheetTitles.find((title) => {
+    const normalizedTitle = title.toLowerCase();
+    return (
+      normalizedTitle.includes("ads spent report") &&
+      locationNeedles.some((needle) => normalizedTitle.includes(needle))
+    );
+  });
+}
+
+function readAdsSpendRows(
+  values: string[][],
+  location: string,
+  dateFrom: string,
+  dateTo: string,
+): AdsSpendRow[] {
+  if (values.length < 2) {
+    return [];
+  }
+
+  const headers = values[0].map((value) => normalizeHeader(value));
+  const indices = {
+    date: findHeaderIndex(headers, ["date"]),
+    service: findHeaderIndex(headers, ["service type", "service"]),
+    cost: findHeaderIndex(headers, [
+      "cost usd",
+      "cost",
+      "amount spent",
+      "spend",
+      "ad spend",
+    ]),
+  };
+
+  if (indices.date === -1 || indices.service === -1 || indices.cost === -1) {
+    return [];
+  }
+
+  const rows: AdsSpendRow[] = [];
+
+  values.slice(1).forEach((row) => {
+    const date = normalizeDateInput(row[indices.date]);
+    const service = normalizeServiceType(row[indices.service] ?? "");
+    const spend = readNumber(row, indices.cost, 0);
+
+    if (!date || !service || spend <= 0 || date < dateFrom || date > dateTo) {
+      return;
+    }
+
+    rows.push({ date, location, service, spend });
+  });
+
+  return rows;
+}
+
+async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap | null> {
   const config = getGoogleAdsConfig();
   if (!config || rows.length === 0) {
     return null;
@@ -227,7 +398,7 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]) {
   }
 
   const accessToken = await getGoogleAdsAccessToken(config);
-  const spendByDate = new Map<string, number>();
+  const spendBySegment: SpendMap = new Map();
 
   for (const customerId of config.customerIds) {
     const response = await fetch(
@@ -277,12 +448,23 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]) {
           return;
         }
 
-        spendByDate.set(date, (spendByDate.get(date) ?? 0) + costMicros / 1_000_000);
+        const dailySpend = costMicros / 1_000_000;
+
+        ADS_SPEND_LOCATIONS.forEach((location) => {
+          ALLOWED_SERVICES.forEach((service) => {
+            const key = getSpendKey(date, location, service);
+            spendBySegment.set(
+              key,
+              (spendBySegment.get(key) ?? 0) +
+                dailySpend / (ADS_SPEND_LOCATIONS.length * ALLOWED_SERVICES.length),
+            );
+          });
+        });
       });
     });
   }
 
-  return spendByDate;
+  return spendBySegment;
 }
 
 export function getGoogleAdsConfig() {
@@ -419,6 +601,40 @@ export async function getGoogleAdsAccessToken(
 
 function normalizeHeader(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function getSpendKey(date: string, location: string, service: string) {
+  return [date, normalizeLocation(location), service].join("|");
+}
+
+function normalizeDateInput(value?: string) {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return formatDate(parsed);
+  }
+
+  return null;
+}
+
+function formatDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function quoteSheetName(sheetName: string) {
+  return `'${sheetName.replace(/'/g, "''")}'`;
 }
 
 function findHeaderIndex(headers: string[], aliases: readonly string[]) {
