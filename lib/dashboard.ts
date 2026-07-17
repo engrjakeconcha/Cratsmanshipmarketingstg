@@ -300,10 +300,14 @@ async function loadBookedAppointmentCounts(): Promise<{
   let skippedRows = 0;
 
   values.slice(headerRowIndex + 1).forEach((row) => {
-    const date = normalizeDateInput(row[indices.date]);
+    if (!isAppointmentDataRow(row, indices)) {
+      return;
+    }
+
+    const date = normalizeDateInput(row[indices.date]) ?? formatDate(new Date());
     const service = inferAppointmentService(row, indices.service);
 
-    if (!date || !service) {
+    if (!service) {
       skippedRows += 1;
       return;
     }
@@ -952,6 +956,18 @@ function isBookedConversion(value?: string) {
   }
 
   return /appointment|calendar|booking|booked|estimate/i.test(value);
+}
+
+function isAppointmentDataRow(
+  row: string[],
+  indices: { date: number; location: number; service: number },
+) {
+  const trackedValues = [indices.date, indices.location, indices.service]
+    .filter((index) => index !== -1)
+    .map((index) => row[index]?.trim())
+    .filter(Boolean);
+
+  return trackedValues.length > 0;
 }
 
 function toTitleCase(value: string) {
