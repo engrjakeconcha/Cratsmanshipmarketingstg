@@ -1024,7 +1024,7 @@ function normalizeAppointmentServiceType(value: string) {
     return "Home";
   }
 
-  return null;
+  return "Home";
 }
 
 function inferAppointmentService(row: string[], serviceIndex: number) {
