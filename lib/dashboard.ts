@@ -282,7 +282,8 @@ async function loadBookedAppointmentCounts(): Promise<{
     return null;
   }
 
-  const headers = values[0].map((value) => normalizeHeader(value));
+  const headerRowIndex = findBookedAppointmentsHeaderRow(values);
+  const headers = values[headerRowIndex].map((value) => normalizeHeader(value));
   const indices = {
     date: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.date),
     location: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.location),
@@ -290,16 +291,16 @@ async function loadBookedAppointmentCounts(): Promise<{
     status: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.status),
   };
 
-  if (indices.date === -1 || indices.service === -1) {
+  if (indices.date === -1) {
     throw new Error(
-      "The appointments CM tab needs date and service columns for booked appointment mapping.",
+      "The appointments CM tab needs an appointment date column for booked appointment mapping.",
     );
   }
 
   const appointmentsBySegment = new Map<string, number>();
   let skippedRows = 0;
 
-  values.slice(1).forEach((row) => {
+  values.slice(headerRowIndex + 1).forEach((row) => {
     const date = normalizeDateInput(row[indices.date]);
     const service = inferAppointmentService(row, indices.service);
 
@@ -322,6 +323,24 @@ async function loadBookedAppointmentCounts(): Promise<{
         ? `${skippedRows} appointment rows were read, but none matched a supported service/date/status.`
         : undefined,
   };
+}
+
+function findBookedAppointmentsHeaderRow(values: string[][]) {
+  const searchLimit = Math.min(values.length, 20);
+
+  for (let index = 0; index < searchLimit; index += 1) {
+    const headers = values[index].map((value) => normalizeHeader(value));
+    const dateIndex = findHeaderIndex(
+      headers,
+      BOOKED_APPOINTMENT_HEADER_ALIASES.date,
+    );
+
+    if (dateIndex !== -1) {
+      return index;
+    }
+  }
+
+  return 0;
 }
 
 async function getBookedAppointmentsValues(
