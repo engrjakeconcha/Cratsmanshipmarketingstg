@@ -288,7 +288,6 @@ async function loadBookedAppointmentCounts(): Promise<{
     date: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.date),
     location: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.location),
     service: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.service),
-    status: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.status),
   };
 
   if (indices.date === -1) {
@@ -304,7 +303,7 @@ async function loadBookedAppointmentCounts(): Promise<{
     const date = normalizeDateInput(row[indices.date]);
     const service = inferAppointmentService(row, indices.service);
 
-    if (!date || !service || isExcludedAppointment(row, indices.status, date)) {
+    if (!date || !service) {
       skippedRows += 1;
       return;
     }
@@ -320,7 +319,7 @@ async function loadBookedAppointmentCounts(): Promise<{
     counts: appointmentsBySegment,
     warning:
       appointmentsBySegment.size === 0 && skippedRows > 0
-        ? `${skippedRows} appointment rows were read, but none matched a supported service/date/status.`
+        ? `${skippedRows} appointment rows were read, but none matched a supported service/date.`
         : undefined,
   };
 }
@@ -953,16 +952,6 @@ function isBookedConversion(value?: string) {
   }
 
   return /appointment|calendar|booking|booked|estimate/i.test(value);
-}
-
-function isExcludedAppointment(row: string[], statusIndex: number, date: string) {
-  const status = statusIndex === -1 ? "" : row[statusIndex] ?? "";
-  const appointmentDate = new Date(`${date}T00:00:00`);
-
-  return (
-    /cancel|cancelled|canceled/i.test(status) ||
-    appointmentDate.getDay() === 6
-  );
 }
 
 function toTitleCase(value: string) {
