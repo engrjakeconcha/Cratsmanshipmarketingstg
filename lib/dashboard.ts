@@ -6,7 +6,7 @@ const DEFAULT_GOOGLE_SHEETS_SPREADSHEET_ID =
 const DEFAULT_BOOKED_APPOINTMENTS_SPREADSHEET_ID =
   "1amSD2ll-WBWaq7TUK-Bzdms2vUVZ3nlfxjoMOH0xuZM";
 const DEFAULT_GOOGLE_SHEETS_RANGE = "Sheet1!A:Z";
-const DEFAULT_BOOKED_APPOINTMENTS_RANGE = "'appointments CM'!A:Z";
+const DEFAULT_BOOKED_APPOINTMENTS_RANGE = "appointments CM!A:Z";
 const DEFAULT_GOOGLE_SERVICE_ACCOUNT_EMAIL =
   "craftsmanship-marketing@craftsmanship-marketing-stg.iam.gserviceaccount.com";
 const MISSING_LOCATION_LABEL = "Location Not Set";
@@ -275,10 +275,7 @@ async function loadBookedAppointmentCounts(): Promise<{
   const range =
     process.env.GOOGLE_BOOKED_APPOINTMENTS_RANGE ??
     DEFAULT_BOOKED_APPOINTMENTS_RANGE;
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range,
-  });
+  const response = await getBookedAppointmentsValues(sheets, spreadsheetId, range);
   const values = response.data.values ?? [];
 
   if (values.length < 2) {
@@ -325,6 +322,54 @@ async function loadBookedAppointmentCounts(): Promise<{
         ? `${skippedRows} appointment rows were read, but none matched a supported service/date/status.`
         : undefined,
   };
+}
+
+async function getBookedAppointmentsValues(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+  range: string,
+) {
+  try {
+    return await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range,
+    });
+  } catch (error) {
+    if (!isRangeParseError(error)) {
+      throw error;
+    }
+
+    const fallbackRange = await resolveBookedAppointmentsRange(
+      sheets,
+      spreadsheetId,
+    );
+    return sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: fallbackRange,
+    });
+  }
+}
+
+async function resolveBookedAppointmentsRange(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+) {
+  const metadata = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties(title,hidden)",
+  });
+  const sheetTitle = metadata.data.sheets
+    ?.filter((sheet) => !sheet.properties?.hidden)
+    .map((sheet) => sheet.properties?.title)
+    .find((title): title is string =>
+      Boolean(title && /appointments?\s*cm/i.test(title)),
+    );
+
+  if (!sheetTitle) {
+    throw new Error("The appointments CM tab could not be found.");
+  }
+
+  return `${quoteSheetName(sheetTitle)}!A:Z`;
 }
 
 function createSamplePayload(warning: string): DashboardPayload {
@@ -719,6 +764,14 @@ function summarizeGoogleAdsError(errorText: string) {
   } catch {
     return errorText.slice(0, 240);
   }
+}
+
+function isRangeParseError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return /unable to parse range|range/i.test(error.message);
 }
 
 type GoogleApiError = {

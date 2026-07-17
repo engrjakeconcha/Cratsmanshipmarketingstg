@@ -49,7 +49,7 @@ Booked appointment totals are supplied separately from the `appointments CM` tab
 Default booked appointments range:
 
 ```text
-'appointments CM'!A:Z
+appointments CM!A:Z
 ```
 
 ### Google Ads Spend Data
@@ -217,7 +217,7 @@ GOOGLE_BOOKED_APPOINTMENTS_RANGE
 Default booked appointment range:
 
 ```text
-GOOGLE_BOOKED_APPOINTMENTS_RANGE='appointments CM'!A:Z
+GOOGLE_BOOKED_APPOINTMENTS_RANGE=appointments CM!A:Z
 ```
 
 ### Optional Google Sheets Service Account Variables
