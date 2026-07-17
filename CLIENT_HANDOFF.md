@@ -44,6 +44,14 @@ Lead Source
 Company
 ```
 
+Booked appointment totals are supplied separately from the `appointments CM` tab. This tab only feeds the `Booked Appts` metric and does not change lead counts, spend, locations, or other lead-source fields.
+
+Default booked appointments range:
+
+```text
+'appointments CM'!A:Z
+```
+
 ### Google Ads Spend Data
 
 Google Ads spend is read from Google Ads export tabs in the same spreadsheet.
@@ -196,6 +204,21 @@ NEXT_PUBLIC_REFRESH_MS=300000
 ```
 
 This refreshes the browser data every 5 minutes.
+
+### Optional Booked Appointment Variables
+
+These are only needed if the booked appointment source is moved to a different spreadsheet or tab.
+
+```text
+GOOGLE_BOOKED_APPOINTMENTS_SPREADSHEET_ID
+GOOGLE_BOOKED_APPOINTMENTS_RANGE
+```
+
+Default booked appointment range:
+
+```text
+GOOGLE_BOOKED_APPOINTMENTS_RANGE='appointments CM'!A:Z
+```
 
 ### Optional Google Sheets Service Account Variables
 
@@ -498,6 +521,7 @@ Check:
 ```text
 GOOGLE_SHEETS_SPREADSHEET_ID
 GOOGLE_SHEETS_RANGE
+GOOGLE_BOOKED_APPOINTMENTS_RANGE
 Google Sheet sharing permissions
 OAuth refresh token
 Google Sheets API enabled in Google Cloud

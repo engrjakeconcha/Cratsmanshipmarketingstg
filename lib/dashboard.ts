@@ -3,6 +3,10 @@ import { getSampleDashboardRows } from "@/lib/sample-data";
 
 const DEFAULT_GOOGLE_SHEETS_SPREADSHEET_ID =
   "1NcKP_DrtxK9XArJhcZVvhKVBh2tw5vu5PBnrBHePlg4";
+const DEFAULT_BOOKED_APPOINTMENTS_SPREADSHEET_ID =
+  "1amSD2ll-WBWaq7TUK-Bzdms2vUVZ3nlfxjoMOH0xuZM";
+const DEFAULT_GOOGLE_SHEETS_RANGE = "Sheet1!A:Z";
+const DEFAULT_BOOKED_APPOINTMENTS_RANGE = "'appointments CM'!A:Z";
 const DEFAULT_GOOGLE_SERVICE_ACCOUNT_EMAIL =
   "craftsmanship-marketing@craftsmanship-marketing-stg.iam.gserviceaccount.com";
 const MISSING_LOCATION_LABEL = "Location Not Set";
@@ -58,12 +62,31 @@ const HEADER_ALIASES = {
   canceled: ["canceled", "cancelled", "cancel", "appointments canceled", "appointments cancelled"],
   spend: ["spend", "ad spend", "amount spent", "total spend", "cost"],
   conversionType: ["conversion type", "conversion", "lead type"],
+  status: ["status", "appointment status", "appt status"],
+} as const;
+
+const BOOKED_APPOINTMENT_HEADER_ALIASES = {
+  date: [
+    "date",
+    "appointment date",
+    "appt date",
+    "scheduled date",
+    "start date",
+    "start time",
+    "appointment start",
+  ],
+  location: HEADER_ALIASES.location,
+  service: HEADER_ALIASES.service,
+  status: HEADER_ALIASES.status,
 } as const;
 
 export async function loadDashboardPayload(): Promise<DashboardPayload> {
   try {
     const rows = await loadGoogleSheetRows();
-    const { rows: rowsWithSpend, warning } = await applyGoogleAdsSpend(rows);
+    const bookedResult = await applyBookedAppointments(rows);
+    const spendResult = await applyGoogleAdsSpend(bookedResult.rows);
+    const warning = combineWarnings(bookedResult.warning, spendResult.warning);
+    const rowsWithSpend = spendResult.rows;
 
     if (rowsWithSpend.length === 0) {
       return createSamplePayload(
@@ -92,7 +115,7 @@ async function loadGoogleSheetRows() {
     process.env.GOOGLE_SHEETS_SPREADSHEET_ID ??
     DEFAULT_GOOGLE_SHEETS_SPREADSHEET_ID;
   const auth = getGoogleAuth();
-  const range = process.env.GOOGLE_SHEETS_RANGE ?? "Sheet1!A:Z";
+  const range = process.env.GOOGLE_SHEETS_RANGE ?? DEFAULT_GOOGLE_SHEETS_RANGE;
 
   if (!spreadsheetId || !auth) {
     throw new Error("Google Sheets credentials are not configured.");
@@ -120,6 +143,7 @@ async function loadGoogleSheetRows() {
     canceled: findHeaderIndex(headers, HEADER_ALIASES.canceled),
     spend: findHeaderIndex(headers, HEADER_ALIASES.spend),
     conversionType: findHeaderIndex(headers, HEADER_ALIASES.conversionType),
+    status: findHeaderIndex(headers, HEADER_ALIASES.status),
   };
 
   if (indices.date === -1 || indices.service === -1) {
@@ -169,6 +193,122 @@ function mapRow(
     canceled: readNumber(row, indices.canceled, 0),
     spend: readNumber(row, indices.spend, 0),
   };
+}
+
+async function applyBookedAppointments(rows: DashboardRow[]) {
+  try {
+    const appointmentsBySegment = await loadBookedAppointmentCounts();
+
+    if (!appointmentsBySegment || appointmentsBySegment.size === 0) {
+      return { rows };
+    }
+
+    const assignedSegments = new Set<string>();
+    const rowSegments = new Set<string>();
+    const rowsWithBookedAppointments = rows.map((row) => {
+      const key = getSpendKey(row.date, row.location, row.service);
+      rowSegments.add(key);
+      const booked = appointmentsBySegment.get(key) ?? 0;
+
+      if (assignedSegments.has(key)) {
+        return { ...row, booked: 0 };
+      }
+
+      assignedSegments.add(key);
+      return { ...row, booked };
+    });
+
+    const appointmentOnlyRows = Array.from(appointmentsBySegment.entries())
+      .filter(([key]) => !rowSegments.has(key))
+      .map(([key, booked]) => {
+        const { date, location, service } = parseSpendKey(key);
+
+        return {
+          date,
+          location,
+          service,
+          leads: 0,
+          booked,
+          canceled: 0,
+          spend: 0,
+        };
+      });
+
+    return {
+      rows: [...rowsWithBookedAppointments, ...appointmentOnlyRows].sort(
+        (left, right) => left.date.localeCompare(right.date),
+      ),
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to load booked appointment data.";
+
+    return {
+      rows,
+      warning: `${message} Showing booked appointment values from the lead sheet.`,
+    };
+  }
+}
+
+async function loadBookedAppointmentCounts(): Promise<Map<string, number> | null> {
+  const spreadsheetId =
+    process.env.GOOGLE_BOOKED_APPOINTMENTS_SPREADSHEET_ID ??
+    process.env.GOOGLE_SHEETS_SPREADSHEET_ID ??
+    DEFAULT_BOOKED_APPOINTMENTS_SPREADSHEET_ID;
+  const auth = getGoogleAuth();
+
+  if (!spreadsheetId || !auth) {
+    return null;
+  }
+
+  const sheets = google.sheets({ version: "v4", auth });
+  const range =
+    process.env.GOOGLE_BOOKED_APPOINTMENTS_RANGE ??
+    DEFAULT_BOOKED_APPOINTMENTS_RANGE;
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+  });
+  const values = response.data.values ?? [];
+
+  if (values.length < 2) {
+    return null;
+  }
+
+  const headers = values[0].map((value) => normalizeHeader(value));
+  const indices = {
+    date: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.date),
+    location: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.location),
+    service: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.service),
+    status: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.status),
+  };
+
+  if (indices.date === -1 || indices.service === -1) {
+    throw new Error(
+      "The appointments CM tab needs date and service columns for booked appointment mapping.",
+    );
+  }
+
+  const appointmentsBySegment = new Map<string, number>();
+
+  values.slice(1).forEach((row) => {
+    const date = normalizeDateInput(row[indices.date]);
+    const service = normalizeServiceType(row[indices.service] ?? "");
+
+    if (!date || !service || isExcludedAppointment(row, indices.status, date)) {
+      return;
+    }
+
+    const location = normalizeLocation(
+      readCell(row, indices.location, MISSING_LOCATION_LABEL),
+    );
+    const key = getSpendKey(date, location, service);
+    appointmentsBySegment.set(key, (appointmentsBySegment.get(key) ?? 0) + 1);
+  });
+
+  return appointmentsBySegment.size > 0 ? appointmentsBySegment : null;
 }
 
 function createSamplePayload(warning: string): DashboardPayload {
@@ -598,6 +738,14 @@ function summarizeParsedError(parsed: unknown) {
   }
 }
 
+function combineWarnings(...warnings: Array<string | undefined>) {
+  const activeWarnings = warnings.filter((warning): warning is string =>
+    Boolean(warning),
+  );
+
+  return activeWarnings.length > 0 ? activeWarnings.join(" ") : undefined;
+}
+
 export async function getGoogleAdsAccessToken(
   config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>,
 ) {
@@ -717,6 +865,16 @@ function isBookedConversion(value?: string) {
   }
 
   return /appointment|calendar|booking|booked|estimate/i.test(value);
+}
+
+function isExcludedAppointment(row: string[], statusIndex: number, date: string) {
+  const status = statusIndex === -1 ? "" : row[statusIndex] ?? "";
+  const appointmentDate = new Date(`${date}T00:00:00`);
+
+  return (
+    /cancel|cancelled|canceled/i.test(status) ||
+    appointmentDate.getDay() === 6
+  );
 }
 
 function toTitleCase(value: string) {
