@@ -197,10 +197,15 @@ function mapRow(
 
 async function applyBookedAppointments(rows: DashboardRow[]) {
   try {
-    const appointmentsBySegment = await loadBookedAppointmentCounts();
+    const bookedAppointments = await loadBookedAppointmentCounts();
 
-    if (!appointmentsBySegment || appointmentsBySegment.size === 0) {
-      return { rows };
+    if (!bookedAppointments || bookedAppointments.counts.size === 0) {
+      return {
+        rows,
+        warning:
+          bookedAppointments?.warning ??
+          "No usable booked appointment rows were found in the appointments CM tab.",
+      };
     }
 
     const assignedSegments = new Set<string>();
@@ -208,7 +213,7 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
     const rowsWithBookedAppointments = rows.map((row) => {
       const key = getSpendKey(row.date, row.location, row.service);
       rowSegments.add(key);
-      const booked = appointmentsBySegment.get(key) ?? 0;
+      const booked = bookedAppointments.counts.get(key) ?? 0;
 
       if (assignedSegments.has(key)) {
         return { ...row, booked: 0 };
@@ -218,7 +223,7 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
       return { ...row, booked };
     });
 
-    const appointmentOnlyRows = Array.from(appointmentsBySegment.entries())
+    const appointmentOnlyRows = Array.from(bookedAppointments.counts.entries())
       .filter(([key]) => !rowSegments.has(key))
       .map(([key, booked]) => {
         const { date, location, service } = parseSpendKey(key);
@@ -252,7 +257,10 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
   }
 }
 
-async function loadBookedAppointmentCounts(): Promise<Map<string, number> | null> {
+async function loadBookedAppointmentCounts(): Promise<{
+  counts: Map<string, number>;
+  warning?: string;
+} | null> {
   const spreadsheetId =
     process.env.GOOGLE_BOOKED_APPOINTMENTS_SPREADSHEET_ID ??
     process.env.GOOGLE_SHEETS_SPREADSHEET_ID ??
@@ -292,12 +300,14 @@ async function loadBookedAppointmentCounts(): Promise<Map<string, number> | null
   }
 
   const appointmentsBySegment = new Map<string, number>();
+  let skippedRows = 0;
 
   values.slice(1).forEach((row) => {
     const date = normalizeDateInput(row[indices.date]);
-    const service = normalizeServiceType(row[indices.service] ?? "");
+    const service = inferAppointmentService(row, indices.service);
 
     if (!date || !service || isExcludedAppointment(row, indices.status, date)) {
+      skippedRows += 1;
       return;
     }
 
@@ -308,7 +318,13 @@ async function loadBookedAppointmentCounts(): Promise<Map<string, number> | null
     appointmentsBySegment.set(key, (appointmentsBySegment.get(key) ?? 0) + 1);
   });
 
-  return appointmentsBySegment.size > 0 ? appointmentsBySegment : null;
+  return {
+    counts: appointmentsBySegment,
+    warning:
+      appointmentsBySegment.size === 0 && skippedRows > 0
+        ? `${skippedRows} appointment rows were read, but none matched a supported service/date/status.`
+        : undefined,
+  };
 }
 
 function createSamplePayload(warning: string): DashboardPayload {
@@ -886,12 +902,49 @@ function toTitleCase(value: string) {
 }
 
 function normalizeServiceType(value: string) {
-  const normalized = value.toLowerCase();
+  const normalized = value.toLowerCase().replace(/[^a-z]+/g, " ").trim();
   const service = ALLOWED_SERVICES.find((allowedService) =>
     normalized.startsWith(allowedService.toLowerCase()),
   );
 
   return service ?? null;
+}
+
+function normalizeAppointmentServiceType(value: string) {
+  const normalized = value.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+  if (/\bbath(?:room)?\b/.test(normalized)) {
+    return "Bathroom";
+  }
+
+  if (/\bkitchen\b/.test(normalized)) {
+    return "Kitchen";
+  }
+
+  if (/\bhome\b/.test(normalized)) {
+    return "Home";
+  }
+
+  return null;
+}
+
+function inferAppointmentService(row: string[], serviceIndex: number) {
+  const directService =
+    serviceIndex === -1
+      ? null
+      : normalizeAppointmentServiceType(row[serviceIndex] ?? "");
+
+  if (directService) {
+    return directService;
+  }
+
+  for (const cell of row) {
+    const service = normalizeAppointmentServiceType(cell ?? "");
+    if (service) {
+      return service;
+    }
+  }
+
+  return null;
 }
 
 function normalizeLocation(value: string) {
