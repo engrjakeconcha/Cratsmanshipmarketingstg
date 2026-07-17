@@ -49,6 +49,11 @@ export type DashboardPayload = {
     locations: string[];
     source: "google-sheets" | "sample-fallback";
     warning?: string;
+    appointmentDiagnostics?: {
+      dataRows: number;
+      countedRows: number;
+      skippedRows: number;
+    };
   };
 };
 
@@ -101,6 +106,7 @@ export async function loadDashboardPayload(): Promise<DashboardPayload> {
         locations: Array.from(new Set(rowsWithSpend.map((row) => row.location))).sort(),
         source: "google-sheets",
         warning,
+        appointmentDiagnostics: bookedResult.diagnostics,
       },
     };
   } catch (error) {
@@ -205,6 +211,7 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
         warning:
           bookedAppointments?.warning ??
           "No usable booked appointment rows were found in the appointments CM tab.",
+        diagnostics: bookedAppointments?.diagnostics,
       };
     }
 
@@ -243,6 +250,7 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
       rows: [...rowsWithBookedAppointments, ...appointmentOnlyRows].sort(
         (left, right) => left.date.localeCompare(right.date),
       ),
+      diagnostics: bookedAppointments.diagnostics,
     };
   } catch (error) {
     const message =
@@ -260,6 +268,11 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
 async function loadBookedAppointmentCounts(): Promise<{
   counts: Map<string, number>;
   warning?: string;
+  diagnostics: {
+    dataRows: number;
+    countedRows: number;
+    skippedRows: number;
+  };
 } | null> {
   const spreadsheetId =
     process.env.GOOGLE_BOOKED_APPOINTMENTS_SPREADSHEET_ID ??
@@ -297,6 +310,7 @@ async function loadBookedAppointmentCounts(): Promise<{
   }
 
   const appointmentsBySegment = new Map<string, number>();
+  let dataRows = 0;
   let skippedRows = 0;
 
   values.slice(headerRowIndex + 1).forEach((row) => {
@@ -304,6 +318,7 @@ async function loadBookedAppointmentCounts(): Promise<{
       return;
     }
 
+    dataRows += 1;
     const date = normalizeDateInput(row[indices.date]) ?? formatDate(new Date());
     const service = inferAppointmentService(row, indices.service);
 
@@ -321,6 +336,14 @@ async function loadBookedAppointmentCounts(): Promise<{
 
   return {
     counts: appointmentsBySegment,
+    diagnostics: {
+      dataRows,
+      countedRows: Array.from(appointmentsBySegment.values()).reduce(
+        (total, count) => total + count,
+        0,
+      ),
+      skippedRows,
+    },
     warning:
       appointmentsBySegment.size === 0 && skippedRows > 0
         ? `${skippedRows} appointment rows were read, but none matched a supported service/date.`
