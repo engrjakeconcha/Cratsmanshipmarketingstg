@@ -896,7 +896,7 @@ function normalizeDateInput(value?: string) {
     return formatDate(parsed);
   }
 
-  return null;
+  return "Home";
 }
 
 function formatDate(date: Date) {
