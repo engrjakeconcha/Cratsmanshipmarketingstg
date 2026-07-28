@@ -201,13 +201,13 @@ function mapRow(
     return null;
   }
 
-  const date = new Date(rawDate);
-  if (Number.isNaN(date.getTime())) {
+  const date = normalizeDateInput(rawDate);
+  if (!date) {
     return null;
   }
 
   return {
-    date: date.toISOString().slice(0, 10),
+    date,
     location: normalizeLocation(
       readCell(row, indices.location, MISSING_LOCATION_LABEL),
     ),
@@ -1198,11 +1198,20 @@ function toTitleCase(value: string) {
 
 function normalizeServiceType(value: string) {
   const normalized = value.toLowerCase().replace(/[^a-z]+/g, " ").trim();
-  const service = ALLOWED_SERVICES.find((allowedService) =>
-    normalized.startsWith(allowedService.toLowerCase()),
-  );
 
-  return service ?? null;
+  if (/^(bath|bathroom)\b/.test(normalized)) {
+    return "Bathroom";
+  }
+
+  if (/^kitchen\b/.test(normalized)) {
+    return "Kitchen";
+  }
+
+  if (/^home\b|^deck\b|^outdoor\b|^adu\b|^addition\b/.test(normalized)) {
+    return "Home";
+  }
+
+  return normalizeProjectServiceTypes(value)[0] ?? null;
 }
 
 function inferGoogleAdsServices(...values: Array<string | undefined>) {
