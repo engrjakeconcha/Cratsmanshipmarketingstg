@@ -477,9 +477,10 @@ function createSamplePayload(warning: string): DashboardPayload {
 
 async function applyGoogleAdsSpend(rows: DashboardRow[]) {
   try {
-    const spendBySegment =
-      (await loadGoogleAdsDailySpend(rows)) ??
-      (await loadExportedGoogleAdsSpend(rows));
+    const apiSpendBySegment = await loadGoogleAdsDailySpend(rows);
+    const sheetSpendBySegment = await loadExportedGoogleAdsSpend(rows);
+    const spendBySegment = mergeSpendMaps(apiSpendBySegment, sheetSpendBySegment);
+
     if (!spendBySegment) {
       return { rows };
     }
@@ -535,6 +536,23 @@ async function applyGoogleAdsSpend(rows: DashboardRow[]) {
       warning: `${message} Showing sheet spend values.`,
     };
   }
+}
+
+function mergeSpendMaps(
+  primarySpend: SpendMap | null,
+  fallbackSpend: SpendMap | null,
+) {
+  if (!primarySpend && !fallbackSpend) {
+    return null;
+  }
+
+  const merged: SpendMap = new Map(fallbackSpend ?? []);
+
+  primarySpend?.forEach((spend, key) => {
+    merged.set(key, spend);
+  });
+
+  return merged.size > 0 ? merged : null;
 }
 
 async function loadExportedGoogleAdsSpend(rows: DashboardRow[]): Promise<SpendMap | null> {
@@ -719,6 +737,7 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
 
   const accessToken = await getGoogleAdsAccessToken(config);
   const spendBySegment: SpendMap = new Map();
+  const failures: string[] = [];
 
   for (const customerId of config.customerIds) {
     const response = await fetch(
@@ -740,9 +759,10 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `Google Ads spend request failed with ${response.status}: ${summarizeGoogleAdsError(errorText)}`,
+      failures.push(
+        `${customerId} failed with ${response.status}: ${summarizeGoogleAdsError(errorText)}`,
       );
+      continue;
     }
 
     const chunks = (await response.json()) as Array<{
@@ -779,7 +799,11 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
     });
   }
 
-  return spendBySegment;
+  if (spendBySegment.size === 0 && failures.length > 0) {
+    throw new Error(`Google Ads spend request failed: ${failures.join("; ")}`);
+  }
+
+  return spendBySegment.size > 0 ? spendBySegment : null;
 }
 
 export function getGoogleAdsConfig() {
