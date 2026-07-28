@@ -13,6 +13,10 @@ const MISSING_LOCATION_LABEL = "Location Not Set";
 const ALLOWED_SERVICES = ["Bathroom", "Kitchen", "Home"] as const;
 const ADS_SPEND_REPORT_TITLE = "Ads Spent Report";
 const ADS_SPEND_LOCATIONS = ["San Diego", "Texas"] as const;
+const GOOGLE_ADS_CUSTOMER_LOCATION_FALLBACKS: Record<string, string> = {
+  "2060632776": "San Diego",
+  "5422902197": "Texas",
+};
 
 export type DashboardRow = {
   date: string;
@@ -55,6 +59,7 @@ export type DashboardPayload = {
       skippedRows: number;
       projectTypeColumn?: string | null;
       projectTypeMappings?: Record<string, Record<string, number>>;
+      locationMappings?: Record<string, Record<string, number>>;
       fallbackHomeRows?: number;
     };
   };
@@ -284,6 +289,7 @@ async function loadBookedAppointmentCounts(): Promise<{
     skippedRows: number;
     projectTypeColumn?: string | null;
     projectTypeMappings?: Record<string, Record<string, number>>;
+    locationMappings?: Record<string, Record<string, number>>;
     fallbackHomeRows?: number;
   };
 } | null> {
@@ -327,6 +333,7 @@ async function loadBookedAppointmentCounts(): Promise<{
 
   const appointmentsBySegment = new Map<string, number>();
   const projectTypeMappings: Record<string, Record<string, number>> = {};
+  const locationMappings: Record<string, Record<string, number>> = {};
   let dataRows = 0;
   let skippedRows = 0;
   let fallbackHomeRows = 0;
@@ -355,9 +362,12 @@ async function loadBookedAppointmentCounts(): Promise<{
     projectTypeMappings[rawProjectType][service] =
       (projectTypeMappings[rawProjectType][service] ?? 0) + 1;
 
-    const location = normalizeLocation(
-      readCell(row, indices.location, MISSING_LOCATION_LABEL),
-    );
+    const rawLocation = readCell(row, indices.location, MISSING_LOCATION_LABEL);
+    const location = normalizeLocation(rawLocation);
+    locationMappings[rawLocation] ??= {};
+    locationMappings[rawLocation][location] =
+      (locationMappings[rawLocation][location] ?? 0) + 1;
+
     const key = getSpendKey(date, location, service);
     appointmentsBySegment.set(key, (appointmentsBySegment.get(key) ?? 0) + 1);
   });
@@ -376,6 +386,7 @@ async function loadBookedAppointmentCounts(): Promise<{
           ? null
           : values[headerRowIndex][indices.projectType] ?? null,
       projectTypeMappings,
+      locationMappings,
       fallbackHomeRows,
     },
     warning:
@@ -759,13 +770,15 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
 
         const dailySpend = costMicros / 1_000_000;
 
-        ADS_SPEND_LOCATIONS.forEach((location) => {
+        const locations = getGoogleAdsCustomerLocations(config, customerId);
+
+        locations.forEach((location) => {
           ALLOWED_SERVICES.forEach((service) => {
             const key = getSpendKey(date, location, service);
             spendBySegment.set(
               key,
               (spendBySegment.get(key) ?? 0) +
-                dailySpend / (ADS_SPEND_LOCATIONS.length * ALLOWED_SERVICES.length),
+                dailySpend / (locations.length * ALLOWED_SERVICES.length),
             );
           });
         });
@@ -805,10 +818,49 @@ export function getGoogleAdsConfig() {
     clientId,
     clientSecret,
     customerIds,
+    customerLocations: getGoogleAdsCustomerLocationMap(customerIds),
     developerToken,
     loginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/\D/g, ""),
     refreshToken,
   };
+}
+
+function getGoogleAdsCustomerLocations(
+  config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>,
+  customerId: string,
+) {
+  const location = config.customerLocations.get(customerId);
+  return location ? [location] : [...ADS_SPEND_LOCATIONS];
+}
+
+function getGoogleAdsCustomerLocationMap(customerIds: string[]) {
+  const configuredEntries =
+    process.env.GOOGLE_ADS_CUSTOMER_LOCATION_MAP ??
+    process.env.GOOGLE_ADS_CUSTOMER_LOCATIONS ??
+    "";
+  const map = new Map<string, string>();
+
+  configuredEntries
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .forEach((entry) => {
+      const [rawCustomerId, rawLocation] = entry.split(":");
+      const customerId = rawCustomerId?.replace(/\D/g, "");
+      const location = rawLocation ? normalizeLocation(rawLocation) : null;
+
+      if (customerId && location) {
+        map.set(customerId, location);
+      }
+    });
+
+  customerIds.forEach((customerId) => {
+    if (!map.has(customerId) && GOOGLE_ADS_CUSTOMER_LOCATION_FALLBACKS[customerId]) {
+      map.set(customerId, GOOGLE_ADS_CUSTOMER_LOCATION_FALLBACKS[customerId]);
+    }
+  });
+
+  return map;
 }
 
 function summarizeGoogleAdsError(errorText: string) {
