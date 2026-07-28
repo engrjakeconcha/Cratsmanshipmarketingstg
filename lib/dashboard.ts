@@ -53,6 +53,9 @@ export type DashboardPayload = {
       dataRows: number;
       countedRows: number;
       skippedRows: number;
+      projectTypeColumn?: string | null;
+      projectTypeMappings?: Record<string, Record<string, number>>;
+      fallbackHomeRows?: number;
     };
   };
 };
@@ -81,7 +84,14 @@ const BOOKED_APPOINTMENT_HEADER_ALIASES = {
     "appointment start",
   ],
   location: HEADER_ALIASES.location,
-  service: HEADER_ALIASES.service,
+  projectType: [
+    "project type",
+    "project",
+    "project category",
+    "job type",
+    "scope",
+    ...HEADER_ALIASES.service,
+  ],
   status: HEADER_ALIASES.status,
 } as const;
 
@@ -272,6 +282,9 @@ async function loadBookedAppointmentCounts(): Promise<{
     dataRows: number;
     countedRows: number;
     skippedRows: number;
+    projectTypeColumn?: string | null;
+    projectTypeMappings?: Record<string, Record<string, number>>;
+    fallbackHomeRows?: number;
   };
 } | null> {
   const spreadsheetId =
@@ -300,7 +313,10 @@ async function loadBookedAppointmentCounts(): Promise<{
   const indices = {
     date: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.date),
     location: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.location),
-    service: findHeaderIndex(headers, BOOKED_APPOINTMENT_HEADER_ALIASES.service),
+    projectType: findHeaderIndex(
+      headers,
+      BOOKED_APPOINTMENT_HEADER_ALIASES.projectType,
+    ),
   };
 
   if (indices.date === -1) {
@@ -310,8 +326,10 @@ async function loadBookedAppointmentCounts(): Promise<{
   }
 
   const appointmentsBySegment = new Map<string, number>();
+  const projectTypeMappings: Record<string, Record<string, number>> = {};
   let dataRows = 0;
   let skippedRows = 0;
+  let fallbackHomeRows = 0;
 
   values.slice(headerRowIndex + 1).forEach((row) => {
     if (!isAppointmentDataRow(row, indices)) {
@@ -320,12 +338,22 @@ async function loadBookedAppointmentCounts(): Promise<{
 
     dataRows += 1;
     const date = normalizeDateInput(row[indices.date]) ?? formatDate(new Date());
-    const service = inferAppointmentService(row, indices.service);
+    const projectType = inferAppointmentService(row, indices.projectType);
+    const service = projectType.service;
 
     if (!service) {
       skippedRows += 1;
       return;
     }
+
+    if (projectType.isFallbackHome) {
+      fallbackHomeRows += 1;
+    }
+
+    const rawProjectType = projectType.rawValue || "Blank";
+    projectTypeMappings[rawProjectType] ??= {};
+    projectTypeMappings[rawProjectType][service] =
+      (projectTypeMappings[rawProjectType][service] ?? 0) + 1;
 
     const location = normalizeLocation(
       readCell(row, indices.location, MISSING_LOCATION_LABEL),
@@ -343,6 +371,12 @@ async function loadBookedAppointmentCounts(): Promise<{
         0,
       ),
       skippedRows,
+      projectTypeColumn:
+        indices.projectType === -1
+          ? null
+          : values[headerRowIndex][indices.projectType] ?? null,
+      projectTypeMappings,
+      fallbackHomeRows,
     },
     warning:
       appointmentsBySegment.size === 0 && skippedRows > 0
@@ -983,9 +1017,9 @@ function isBookedConversion(value?: string) {
 
 function isAppointmentDataRow(
   row: string[],
-  indices: { date: number; location: number; service: number },
+  indices: { date: number; location: number; projectType: number },
 ) {
-  const trackedValues = [indices.date, indices.location, indices.service]
+  const trackedValues = [indices.date, indices.location, indices.projectType]
     .filter((index) => index !== -1)
     .map((index) => row[index]?.trim())
     .filter(Boolean);
@@ -1024,27 +1058,38 @@ function normalizeAppointmentServiceType(value: string) {
     return "Home";
   }
 
-  return "Home";
+  return null;
 }
 
-function inferAppointmentService(row: string[], serviceIndex: number) {
-  const directService =
-    serviceIndex === -1
-      ? null
-      : normalizeAppointmentServiceType(row[serviceIndex] ?? "");
+function inferAppointmentService(row: string[], projectTypeIndex: number) {
+  if (projectTypeIndex !== -1) {
+    const rawValue = row[projectTypeIndex]?.trim() ?? "";
+    const service = normalizeAppointmentServiceType(rawValue);
 
-  if (directService) {
-    return directService;
+    return {
+      rawValue,
+      service: service ?? "Home",
+      isFallbackHome: !service,
+    };
   }
 
   for (const cell of row) {
-    const service = normalizeAppointmentServiceType(cell ?? "");
+    const rawValue = cell?.trim() ?? "";
+    const service = normalizeAppointmentServiceType(rawValue);
     if (service) {
-      return service;
+      return {
+        rawValue,
+        service,
+        isFallbackHome: false,
+      };
     }
   }
 
-  return null;
+  return {
+    rawValue: "",
+    service: "Home",
+    isFallbackHome: true,
+  };
 }
 
 function normalizeLocation(value: string) {
