@@ -750,8 +750,10 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
             SELECT
               segments.date,
               metrics.cost_micros
-            FROM campaign
+            FROM ad_group
             WHERE segments.date BETWEEN '${dateFrom}' AND '${dateTo}'
+              AND campaign.status IN ('ENABLED', 'PAUSED')
+              AND ad_group.status IN ('ENABLED', 'PAUSED')
           `,
         }),
       },

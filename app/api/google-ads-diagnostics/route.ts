@@ -70,10 +70,13 @@ export async function GET() {
           query: `
             SELECT
               campaign.id,
+              ad_group.id,
               segments.date,
               metrics.cost_micros
-            FROM campaign
+            FROM ad_group
             WHERE segments.date DURING LAST_30_DAYS
+              AND campaign.status IN ('ENABLED', 'PAUSED')
+              AND ad_group.status IN ('ENABLED', 'PAUSED')
           `,
         }),
       );
