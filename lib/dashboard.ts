@@ -771,6 +771,8 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
         body: JSON.stringify({
           query: `
             SELECT
+              campaign.name,
+              ad_group.name,
               segments.date,
               metrics.cost_micros
             FROM ad_group
@@ -792,6 +794,8 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
 
     const chunks = (await response.json()) as Array<{
       results?: Array<{
+        campaign?: { name?: string };
+        adGroup?: { name?: string };
         segments?: { date?: string };
         metrics?: { costMicros?: string };
       }>;
@@ -807,16 +811,19 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
         }
 
         const dailySpend = costMicros / 1_000_000;
-
         const locations = getGoogleAdsCustomerLocations(config, customerId);
+        const services = inferGoogleAdsServices(
+          result.adGroup?.name,
+          result.campaign?.name,
+        );
 
         locations.forEach((location) => {
-          ALLOWED_SERVICES.forEach((service) => {
+          services.forEach((service) => {
             const key = getSpendKey(date, location, service);
             spendBySegment.set(
               key,
               (spendBySegment.get(key) ?? 0) +
-                dailySpend / (locations.length * ALLOWED_SERVICES.length),
+                dailySpend / (locations.length * services.length),
             );
           });
         });
@@ -1198,7 +1205,20 @@ function normalizeServiceType(value: string) {
   return service ?? null;
 }
 
+function inferGoogleAdsServices(...values: Array<string | undefined>) {
+  const services = values.flatMap((value) =>
+    value ? normalizeProjectServiceTypes(value) : [],
+  );
+  const uniqueServices = Array.from(new Set(services));
+
+  return uniqueServices.length > 0 ? uniqueServices : [...ALLOWED_SERVICES];
+}
+
 function normalizeAppointmentServiceTypes(value: string) {
+  return normalizeProjectServiceTypes(value);
+}
+
+function normalizeProjectServiceTypes(value: string) {
   const normalized = value.toLowerCase().replace(/[^a-z]+/g, " ").trim();
   const services: string[] = [];
 
@@ -1211,6 +1231,10 @@ function normalizeAppointmentServiceTypes(value: string) {
   }
 
   if (/\bhome\b/.test(normalized)) {
+    services.push("Home");
+  }
+
+  if (/\bdeck\b|\boutdoor\b|\badu\b|\baddition\b/.test(normalized)) {
     services.push("Home");
   }
 
