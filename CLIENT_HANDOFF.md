@@ -67,7 +67,7 @@ Location mapping:
 
 ```text
 Ads Spent Report       -> San Diego
-Ads Spent Report Texas -> Texas
+Ads Spent Report Texas -> Dallas
 ```
 
 Expected Google Ads export columns:
@@ -93,14 +93,14 @@ Only these dashboard locations are shown:
 
 ```text
 San Diego
-Texas
+Dallas
 ```
 
 Company/location values from the lead sheet are normalized:
 
 ```text
 San Diego, SD, Creative Design & Build San Diego -> San Diego
-Texas, TX, Dallas, Creative Design & Build Texas -> Texas
+Texas, TX, Dallas, Creative Design & Build Texas -> Dallas
 ```
 
 ### Services
@@ -504,7 +504,7 @@ After deployment, validate:
 ```text
 Login works with the dashboard password.
 Lead rows load from Google Sheets.
-Location dropdown only shows San Diego and Texas.
+Location dropdown only shows Dallas and San Diego.
 Service pills show All, Bathroom, Kitchen, and Home.
 Date range defaults to the current month.
 Booked appointments include Calendar Appointment conversion types.

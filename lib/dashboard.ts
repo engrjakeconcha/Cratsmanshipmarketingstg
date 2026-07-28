@@ -12,10 +12,10 @@ const DEFAULT_GOOGLE_SERVICE_ACCOUNT_EMAIL =
 const MISSING_LOCATION_LABEL = "Location Not Set";
 const ALLOWED_SERVICES = ["Bathroom", "Kitchen", "Home"] as const;
 const ADS_SPEND_REPORT_TITLE = "Ads Spent Report";
-const ADS_SPEND_LOCATIONS = ["San Diego", "Texas"] as const;
+const ADS_SPEND_LOCATIONS = ["Dallas", "San Diego"] as const;
 const GOOGLE_ADS_CUSTOMER_LOCATION_FALLBACKS: Record<string, string> = {
   "2060632776": "San Diego",
-  "5422902197": "Texas",
+  "5422902197": "Dallas",
 };
 
 export type DashboardRow = {
@@ -645,7 +645,7 @@ function resolveAdsSpendSheets(sheetTitles: string[]) {
       sheetName: process.env.GOOGLE_ADS_SPEND_SHEET_SAN_DIEGO,
     },
     {
-      location: "Texas",
+      location: "Dallas",
       sheetName: process.env.GOOGLE_ADS_SPEND_SHEET_TEXAS,
     },
   ]
@@ -677,7 +677,7 @@ function resolveAdsSpendSheets(sheetTitles: string[]) {
 
 function findAdsSpendSheetForLocation(sheetTitles: string[], location: string) {
   const locationNeedles =
-    location === "Texas" ? ["texas", "tx"] : ["san diego", "sandiego", "sd"];
+    location === "Dallas" ? ["dallas", "texas", "tx"] : ["san diego", "sandiego", "sd"];
 
   return sheetTitles.find((title) => {
     const normalizedTitle = title.toLowerCase();
@@ -1252,7 +1252,7 @@ function normalizeLocation(value: string) {
   const normalized = value.toLowerCase();
 
   if (normalized.includes("texas") || normalized.includes("dallas")) {
-    return "Texas";
+    return "Dallas";
   }
 
   if (normalized.includes("san diego")) {
