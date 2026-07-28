@@ -1046,6 +1046,20 @@ function normalizeServiceType(value: string) {
 
 function normalizeAppointmentServiceType(value: string) {
   const normalized = value.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+  const firstWord = normalized.split(" ")[0];
+
+  if (firstWord === "bathroom" || firstWord === "bath") {
+    return "Bathroom";
+  }
+
+  if (firstWord === "kitchen") {
+    return "Kitchen";
+  }
+
+  if (firstWord === "home") {
+    return "Home";
+  }
+
   if (/\bbath(?:room)?\b/.test(normalized)) {
     return "Bathroom";
   }
