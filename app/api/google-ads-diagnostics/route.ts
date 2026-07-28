@@ -62,34 +62,18 @@ export async function GET() {
 
     for (const customerId of config.customerIds) {
       probes.push(
-        await runSearchProbe({
+        await runSearchStreamProbe({
           accessToken,
           config,
           customerId,
-          name: `customer_metadata_${customerId}`,
+          name: `campaign_spend_stream_${customerId}`,
           query: `
             SELECT
-              customer.id,
-              customer.descriptive_name,
-              customer.manager
-            FROM customer
-            LIMIT 1
-          `,
-        }),
-      );
-      probes.push(
-        await runSearchProbe({
-          accessToken,
-          config,
-          customerId,
-          name: `campaign_spend_search_${customerId}`,
-          query: `
-            SELECT
+              campaign.id,
               segments.date,
               metrics.cost_micros
             FROM campaign
             WHERE segments.date DURING LAST_30_DAYS
-            LIMIT 10
           `,
         }),
       );
@@ -147,44 +131,6 @@ async function listAccessibleCustomers(
       ? `Returned ${customerIds.length} accessible customer(s).`
       : summarizeGoogleAdsDiagnosticError(body),
     customerIds,
-    error: body.error,
-  };
-}
-
-async function runSearchProbe({
-  accessToken,
-  config,
-  customerId,
-  name,
-  query,
-}: {
-  accessToken: string;
-  config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>;
-  customerId: string;
-  name: string;
-  query: string;
-}): Promise<GoogleAdsProbe> {
-  const response = await fetch(
-    `https://googleads.googleapis.com/${config.apiVersion}/customers/${customerId}/googleAds:search`,
-    {
-      method: "POST",
-      headers: getGoogleAdsHeaders(config, accessToken),
-      body: JSON.stringify({ pageSize: 100, query }),
-    },
-  );
-  const body = await parseGoogleAdsResponse(response);
-  const resultCount = Array.isArray(body.json?.results)
-    ? body.json.results.length
-    : undefined;
-
-  return {
-    name,
-    ok: response.ok,
-    status: response.status,
-    summary: response.ok
-      ? `Returned ${resultCount ?? 0} result(s).`
-      : summarizeGoogleAdsDiagnosticError(body),
-    resultCount,
     error: body.error,
   };
 }
