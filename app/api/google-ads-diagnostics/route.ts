@@ -84,6 +84,7 @@ export async function GET() {
         ok: probes.some((probe) => probe.ok),
         configuredCustomerIds: config.customerIds,
         loginCustomerId: config.loginCustomerId,
+        loginCustomerIdMap: Object.fromEntries(config.customerLoginCustomerIds),
         probes,
       },
       {
@@ -152,7 +153,7 @@ async function runSearchStreamProbe({
     `https://googleads.googleapis.com/${config.apiVersion}/customers/${customerId}/googleAds:searchStream`,
     {
       method: "POST",
-      headers: getGoogleAdsHeaders(config, accessToken),
+      headers: getGoogleAdsHeaders(config, accessToken, customerId),
       body: JSON.stringify({ query }),
     },
   );
@@ -180,14 +181,17 @@ async function runSearchStreamProbe({
 function getGoogleAdsHeaders(
   config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>,
   accessToken: string,
+  customerId?: string,
 ) {
+  const loginCustomerId = customerId
+    ? config.customerLoginCustomerIds.get(customerId) ?? config.loginCustomerId
+    : config.loginCustomerId;
+
   return {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
     "developer-token": config.developerToken,
-    ...(config.loginCustomerId
-      ? { "login-customer-id": config.loginCustomerId }
-      : {}),
+    ...(loginCustomerId ? { "login-customer-id": loginCustomerId } : {}),
   };
 }
 

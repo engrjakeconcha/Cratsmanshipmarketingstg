@@ -725,14 +725,7 @@ async function loadGoogleAdsDailySpend(rows: DashboardRow[]): Promise<SpendMap |
       `https://googleads.googleapis.com/${config.apiVersion}/customers/${customerId}/googleAds:searchStream`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          "developer-token": config.developerToken,
-          ...(config.loginCustomerId
-            ? { "login-customer-id": config.loginCustomerId }
-            : {}),
-        },
+        headers: getGoogleAdsRequestHeaders(config, accessToken, customerId),
         body: JSON.stringify({
           query: `
             SELECT
@@ -819,10 +812,33 @@ export function getGoogleAdsConfig() {
     clientSecret,
     customerIds,
     customerLocations: getGoogleAdsCustomerLocationMap(customerIds),
+    customerLoginCustomerIds: getGoogleAdsLoginCustomerIdMap(customerIds),
     developerToken,
     loginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/\D/g, ""),
     refreshToken,
   };
+}
+
+function getGoogleAdsRequestHeaders(
+  config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>,
+  accessToken: string,
+  customerId: string,
+) {
+  const loginCustomerId = getGoogleAdsLoginCustomerId(config, customerId);
+
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "developer-token": config.developerToken,
+    ...(loginCustomerId ? { "login-customer-id": loginCustomerId } : {}),
+  };
+}
+
+function getGoogleAdsLoginCustomerId(
+  config: NonNullable<ReturnType<typeof getGoogleAdsConfig>>,
+  customerId: string,
+) {
+  return config.customerLoginCustomerIds.get(customerId) ?? config.loginCustomerId;
 }
 
 function getGoogleAdsCustomerLocations(
@@ -861,6 +877,29 @@ function getGoogleAdsCustomerLocationMap(customerIds: string[]) {
   });
 
   return map;
+}
+
+function getGoogleAdsLoginCustomerIdMap(customerIds: string[]) {
+  const configuredEntries = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID_MAP ?? "";
+  const map = new Map<string, string>();
+
+  configuredEntries
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .forEach((entry) => {
+      const [rawCustomerId, rawLoginCustomerId] = entry.split(":");
+      const customerId = rawCustomerId?.replace(/\D/g, "");
+      const loginCustomerId = rawLoginCustomerId?.replace(/\D/g, "");
+
+      if (customerId && loginCustomerId) {
+        map.set(customerId, loginCustomerId);
+      }
+    });
+
+  return new Map(
+    Array.from(map.entries()).filter(([customerId]) => customerIds.includes(customerId)),
+  );
 }
 
 function summarizeGoogleAdsError(errorText: string) {
