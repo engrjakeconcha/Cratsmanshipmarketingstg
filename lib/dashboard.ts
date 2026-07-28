@@ -354,7 +354,12 @@ async function loadBookedAppointmentCounts(): Promise<{
     }
 
     dataRows += 1;
-    const date = normalizeDateInput(row[indices.date]) ?? formatDate(new Date());
+    const date = normalizeDateInput(row[indices.date]);
+    if (!date) {
+      skippedRows += 1;
+      return;
+    }
+
     const projectType = inferAppointmentServices(row, indices.projectType);
     const services = projectType.services;
 
@@ -1083,8 +1088,22 @@ function normalizeDateInput(value?: string) {
   }
 
   const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
+  const isoDateMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoDateMatch) {
+    return [
+      isoDateMatch[1],
+      isoDateMatch[2].padStart(2, "0"),
+      isoDateMatch[3].padStart(2, "0"),
+    ].join("-");
+  }
+
+  const slashDateMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (slashDateMatch) {
+    return [
+      slashDateMatch[3],
+      slashDateMatch[1].padStart(2, "0"),
+      slashDateMatch[2].padStart(2, "0"),
+    ].join("-");
   }
 
   const parsed = new Date(value);
@@ -1092,7 +1111,7 @@ function normalizeDateInput(value?: string) {
     return formatDate(parsed);
   }
 
-  return "Home";
+  return null;
 }
 
 function formatDate(date: Date) {
