@@ -521,23 +521,31 @@ function MetricDelta({
 }
 
 function summarizeMetrics(rows: DashboardRow[]): MetricSnapshot {
+  const bookedAppointmentIds = new Set<string>();
   const totals = rows.reduce(
     (accumulator, row) => {
       accumulator.leads += row.leads;
-      accumulator.booked += row.booked;
       accumulator.spend += row.spend;
+
+      if (row.bookedAppointmentIds?.length) {
+        row.bookedAppointmentIds.forEach((id) => bookedAppointmentIds.add(id));
+      } else {
+        accumulator.untrackedBooked += row.booked;
+      }
+
       return accumulator;
     },
-    { leads: 0, booked: 0, spend: 0 },
+    { leads: 0, spend: 0, untrackedBooked: 0 },
   );
+  const booked = bookedAppointmentIds.size + totals.untrackedBooked;
 
   return {
     leads: totals.leads,
-    booked: totals.booked,
+    booked,
     spend: totals.spend,
     cpl: totals.leads ? totals.spend / totals.leads : 0,
-    costPerAppt: totals.booked ? totals.spend / totals.booked : 0,
-    leadToBooking: totals.leads ? totals.booked / totals.leads : 0,
+    costPerAppt: booked ? totals.spend / booked : 0,
+    leadToBooking: totals.leads ? booked / totals.leads : 0,
   };
 }
 

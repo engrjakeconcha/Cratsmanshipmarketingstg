@@ -26,8 +26,15 @@ export type DashboardRow = {
   booked: number;
   canceled: number;
   spend: number;
+  bookedAppointmentIds?: string[];
 };
 
+type AppointmentSegment = {
+  count: number;
+  ids: string[];
+};
+
+type AppointmentMap = Map<string, AppointmentSegment>;
 type SpendMap = Map<string, number>;
 type AdsSpendRow = {
   date: string;
@@ -235,19 +242,21 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
     const rowsWithBookedAppointments = rows.map((row) => {
       const key = getSpendKey(row.date, row.location, row.service);
       rowSegments.add(key);
-      const booked = bookedAppointments.counts.get(key) ?? 0;
+      const appointmentSegment = bookedAppointments.counts.get(key);
+      const booked = appointmentSegment?.count ?? 0;
+      const bookedAppointmentIds = appointmentSegment?.ids ?? [];
 
       if (assignedSegments.has(key)) {
-        return { ...row, booked: 0 };
+        return { ...row, booked: 0, bookedAppointmentIds: [] };
       }
 
       assignedSegments.add(key);
-      return { ...row, booked };
+      return { ...row, booked, bookedAppointmentIds };
     });
 
     const appointmentOnlyRows = Array.from(bookedAppointments.counts.entries())
       .filter(([key]) => !rowSegments.has(key))
-      .map(([key, booked]) => {
+      .map(([key, appointmentSegment]) => {
         const { date, location, service } = parseSpendKey(key);
 
         return {
@@ -255,7 +264,8 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
           location,
           service,
           leads: 0,
-          booked,
+          booked: appointmentSegment.count,
+          bookedAppointmentIds: appointmentSegment.ids,
           canceled: 0,
           spend: 0,
         };
@@ -281,7 +291,7 @@ async function applyBookedAppointments(rows: DashboardRow[]) {
 }
 
 async function loadBookedAppointmentCounts(): Promise<{
-  counts: Map<string, number>;
+  counts: AppointmentMap;
   warning?: string;
   diagnostics: {
     dataRows: number;
@@ -331,24 +341,24 @@ async function loadBookedAppointmentCounts(): Promise<{
     );
   }
 
-  const appointmentsBySegment = new Map<string, number>();
+  const appointmentsBySegment: AppointmentMap = new Map();
   const projectTypeMappings: Record<string, Record<string, number>> = {};
   const locationMappings: Record<string, Record<string, number>> = {};
   let dataRows = 0;
   let skippedRows = 0;
   let fallbackHomeRows = 0;
 
-  values.slice(headerRowIndex + 1).forEach((row) => {
+  values.slice(headerRowIndex + 1).forEach((row, rowIndex) => {
     if (!isAppointmentDataRow(row, indices)) {
       return;
     }
 
     dataRows += 1;
     const date = normalizeDateInput(row[indices.date]) ?? formatDate(new Date());
-    const projectType = inferAppointmentService(row, indices.projectType);
-    const service = projectType.service;
+    const projectType = inferAppointmentServices(row, indices.projectType);
+    const services = projectType.services;
 
-    if (!service) {
+    if (services.length === 0) {
       skippedRows += 1;
       return;
     }
@@ -359,8 +369,10 @@ async function loadBookedAppointmentCounts(): Promise<{
 
     const rawProjectType = projectType.rawValue || "Blank";
     projectTypeMappings[rawProjectType] ??= {};
-    projectTypeMappings[rawProjectType][service] =
-      (projectTypeMappings[rawProjectType][service] ?? 0) + 1;
+    services.forEach((service) => {
+      projectTypeMappings[rawProjectType][service] =
+        (projectTypeMappings[rawProjectType][service] ?? 0) + 1;
+    });
 
     const rawLocation = readCell(row, indices.location, MISSING_LOCATION_LABEL);
     const location = normalizeLocation(rawLocation);
@@ -368,18 +380,24 @@ async function loadBookedAppointmentCounts(): Promise<{
     locationMappings[rawLocation][location] =
       (locationMappings[rawLocation][location] ?? 0) + 1;
 
-    const key = getSpendKey(date, location, service);
-    appointmentsBySegment.set(key, (appointmentsBySegment.get(key) ?? 0) + 1);
+    const appointmentId = `appointment-${headerRowIndex + rowIndex + 2}`;
+    services.forEach((service) => {
+      const key = getSpendKey(date, location, service);
+      const currentSegment = appointmentsBySegment.get(key) ?? { count: 0, ids: [] };
+      appointmentsBySegment.set(key, {
+        count: currentSegment.count + 1,
+        ids: [...currentSegment.ids, appointmentId],
+      });
+    });
   });
 
   return {
     counts: appointmentsBySegment,
     diagnostics: {
       dataRows,
-      countedRows: Array.from(appointmentsBySegment.values()).reduce(
-        (total, count) => total + count,
-        0,
-      ),
+      countedRows: new Set(
+        Array.from(appointmentsBySegment.values()).flatMap((segment) => segment.ids),
+      ).size,
       skippedRows,
       projectTypeColumn:
         indices.projectType === -1
@@ -1161,56 +1179,44 @@ function normalizeServiceType(value: string) {
   return service ?? null;
 }
 
-function normalizeAppointmentServiceType(value: string) {
+function normalizeAppointmentServiceTypes(value: string) {
   const normalized = value.toLowerCase().replace(/[^a-z]+/g, " ").trim();
-  const firstWord = normalized.split(" ")[0];
-
-  if (firstWord === "bathroom" || firstWord === "bath") {
-    return "Bathroom";
-  }
-
-  if (firstWord === "kitchen") {
-    return "Kitchen";
-  }
-
-  if (firstWord === "home") {
-    return "Home";
-  }
+  const services: string[] = [];
 
   if (/\bbath(?:room)?\b/.test(normalized)) {
-    return "Bathroom";
+    services.push("Bathroom");
   }
 
   if (/\bkitchen\b/.test(normalized)) {
-    return "Kitchen";
+    services.push("Kitchen");
   }
 
   if (/\bhome\b/.test(normalized)) {
-    return "Home";
+    services.push("Home");
   }
 
-  return null;
+  return services;
 }
 
-function inferAppointmentService(row: string[], projectTypeIndex: number) {
+function inferAppointmentServices(row: string[], projectTypeIndex: number) {
   if (projectTypeIndex !== -1) {
     const rawValue = row[projectTypeIndex]?.trim() ?? "";
-    const service = normalizeAppointmentServiceType(rawValue);
+    const services = normalizeAppointmentServiceTypes(rawValue);
 
     return {
       rawValue,
-      service: service ?? "Home",
-      isFallbackHome: !service,
+      services: services.length > 0 ? services : ["Home"],
+      isFallbackHome: services.length === 0,
     };
   }
 
   for (const cell of row) {
     const rawValue = cell?.trim() ?? "";
-    const service = normalizeAppointmentServiceType(rawValue);
-    if (service) {
+    const services = normalizeAppointmentServiceTypes(rawValue);
+    if (services.length > 0) {
       return {
         rawValue,
-        service,
+        services,
         isFallbackHome: false,
       };
     }
@@ -1218,7 +1224,7 @@ function inferAppointmentService(row: string[], projectTypeIndex: number) {
 
   return {
     rawValue: "",
-    service: "Home",
+    services: ["Home"],
     isFallbackHome: true,
   };
 }
