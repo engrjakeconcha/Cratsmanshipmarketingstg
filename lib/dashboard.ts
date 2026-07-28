@@ -433,8 +433,8 @@ function createSamplePayload(warning: string): DashboardPayload {
 async function applyGoogleAdsSpend(rows: DashboardRow[]) {
   try {
     const spendBySegment =
-      (await loadExportedGoogleAdsSpend(rows)) ??
-      (await loadGoogleAdsDailySpend(rows));
+      (await loadGoogleAdsDailySpend(rows)) ??
+      (await loadExportedGoogleAdsSpend(rows));
     if (!spendBySegment) {
       return { rows };
     }
