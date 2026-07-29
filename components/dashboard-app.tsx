@@ -538,7 +538,7 @@ function summarizeMetrics(rows: DashboardRow[]): MetricSnapshot {
     { leads: 0, spend: 0, untrackedBooked: 0 },
   );
   const booked = bookedAppointmentIds.size + totals.untrackedBooked;
-  const leads = Math.max(totals.leads, booked);
+  const leads = totals.leads + booked;
 
   return {
     leads,
