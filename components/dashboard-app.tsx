@@ -538,14 +538,15 @@ function summarizeMetrics(rows: DashboardRow[]): MetricSnapshot {
     { leads: 0, spend: 0, untrackedBooked: 0 },
   );
   const booked = bookedAppointmentIds.size + totals.untrackedBooked;
+  const leads = Math.max(totals.leads, booked);
 
   return {
-    leads: totals.leads,
+    leads,
     booked,
     spend: totals.spend,
-    cpl: totals.leads ? totals.spend / totals.leads : 0,
+    cpl: leads ? totals.spend / leads : 0,
     costPerAppt: booked ? totals.spend / booked : 0,
-    leadToBooking: totals.leads ? booked / totals.leads : 0,
+    leadToBooking: leads ? booked / leads : 0,
   };
 }
 
